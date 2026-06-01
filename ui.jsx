@@ -38,6 +38,11 @@ function Icon({ name, size = 18, color = 'currentColor', strokeWidth = 2 }) {
     chevronRight: <><path d="m9 6 6 6-6 6" /></>,
     alert: <><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /></>,
     settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></>,
+    user: <><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 4-6.5 8-6.5s8 2.5 8 6.5" /></>,
+    menu: <><path d="M3 6h18M3 12h18M3 18h18" /></>,
+    logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></>,
+    upload: <><path d="M12 16V4M7 9l5-5 5 5M5 20h14" /></>,
+    creditCard: <><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" /></>,
   };
   return <svg {...props}>{paths[name] || null}</svg>;
 }
@@ -48,9 +53,9 @@ function Btn({ variant = 'primary', size = 'md', icon, children, onClick, disabl
   const fs = size === 'sm' ? 13 : size === 'lg' ? 15 : 14;
   const variants = {
     primary: { background: 'var(--c-primary)', color: '#fff', border: '1px solid var(--c-primary)' },
-    secondary: { background: '#fff', color: 'var(--c-text)', border: '1px solid var(--c-border)' },
+    secondary: { background: 'var(--c-surface)', color: 'var(--c-text)', border: '1px solid var(--c-border)' },
     ghost: { background: 'transparent', color: 'var(--c-text-muted)', border: '1px solid transparent' },
-    danger: { background: '#fff', color: '#dc2626', border: '1px solid #fecaca' },
+    danger: { background: 'var(--c-surface)', color: '#dc2626', border: '1px solid var(--c-red-bg)' },
     success: { background: '#16a34a', color: '#fff', border: '1px solid #16a34a' },
     dark: { background: 'var(--c-text)', color: '#fff', border: '1px solid var(--c-text)' },
   };
@@ -73,7 +78,7 @@ function Btn({ variant = 'primary', size = 'md', icon, children, onClick, disabl
 
 // ----- Badge -----
 function Badge({ status, children, dot = true }) {
-  const c = statusColor(status) || { bg: '#f1f5f9', fg: '#475569', dot: '#94a3b8', label: status };
+  const c = statusColor(status) || { bg: 'var(--c-bg)', fg: 'var(--c-text-muted)', dot: '#94a3b8', label: status };
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -90,7 +95,7 @@ function Badge({ status, children, dot = true }) {
 function Card({ children, style = {}, padding = 20, onClick }) {
   return (
     <div onClick={onClick} style={{
-      background: '#fff', borderRadius: 12, padding,
+      background: 'var(--c-surface)', borderRadius: 12, padding,
       border: '1px solid var(--c-border)',
       boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04)',
       cursor: onClick ? 'pointer' : 'default',
@@ -143,7 +148,7 @@ function Modal({ open, onClose, title, children, width = 560, footer }) {
       backdropFilter: 'blur(2px)',
     }}>
       <div onClick={e => e.stopPropagation()} style={{
-        background: '#fff', borderRadius: 12, width: '100%', maxWidth: width, maxHeight: '90vh',
+        background: 'var(--c-surface)', borderRadius: 12, width: '100%', maxWidth: width, maxHeight: '90vh',
         display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,.2)'
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '18px 22px', borderBottom: '1px solid var(--c-border)' }}>
@@ -174,7 +179,7 @@ function Field({ label, children, hint, required, span = 1 }) {
 
 const inputStyle = {
   padding: '8px 12px', fontSize: 14,
-  border: '1px solid var(--c-border)', borderRadius: 8, background: '#fff',
+  border: '1px solid var(--c-border)', borderRadius: 8, background: 'var(--c-surface)',
   fontFamily: 'inherit', outline: 'none', color: 'var(--c-text)', width: '100%',
   boxSizing: 'border-box',
 };
@@ -220,7 +225,7 @@ function DonutChart({ data, size = 180, thickness = 28, centerLabel, centerValue
   const C = 2 * Math.PI * r;
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <circle cx={cx} cy={cx} r={r} fill="none" stroke="#f1f5f9" strokeWidth={thickness} />
+      <circle cx={cx} cy={cx} r={r} fill="none" stroke="var(--c-border)" strokeWidth={thickness} />
       {data.map((d, i) => {
         const frac = d.value / total;
         const dash = frac * C;
@@ -263,7 +268,7 @@ function LineChart({ series, height = 200, labels = [] }) {
       {/* grid */}
       {[0, 0.25, 0.5, 0.75, 1].map((t, i) => (
         <g key={i}>
-          <line x1={padding.l} x2={width - padding.r} y1={padding.t + h * t} y2={padding.t + h * t} stroke="#f1f5f9" strokeWidth="1" />
+          <line x1={padding.l} x2={width - padding.r} y1={padding.t + h * t} y2={padding.t + h * t} stroke="var(--c-border)" strokeWidth="1" />
           <text x={padding.l - 6} y={padding.t + h * t + 4} fontSize="10" fill="var(--c-text-muted)" textAnchor="end">
             {formatBRL(max - range * t).replace('R$', '').trim().split(',')[0]}
           </text>
@@ -278,7 +283,7 @@ function LineChart({ series, height = 200, labels = [] }) {
             <path d={area} fill={s.color} opacity="0.08" />
             <path d={path} stroke={s.color} strokeWidth="2.5" fill="none" strokeLinejoin="round" strokeLinecap="round" />
             {s.points.map((p, i) => (
-              <circle key={i} cx={x(i)} cy={y(p)} r="3" fill="#fff" stroke={s.color} strokeWidth="2" />
+              <circle key={i} cx={x(i)} cy={y(p)} r="3" fill="var(--c-surface)" stroke={s.color} strokeWidth="2" />
             ))}
           </g>
         );
@@ -309,7 +314,7 @@ function Legend({ items }) {
 function EmptyState({ icon = 'file', title, hint, action }) {
   return (
     <div style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--c-text-muted)' }}>
-      <div style={{ width: 48, height: 48, borderRadius: 12, background: '#f1f5f9', margin: '0 auto 14px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ width: 48, height: 48, borderRadius: 12, background: 'var(--c-bg)', margin: '0 auto 14px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <Icon name={icon} size={22} />
       </div>
       <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--c-text)', marginBottom: 4 }}>{title}</div>
@@ -351,4 +356,16 @@ function ToastProvider({ children }) {
 }
 function useToast() { return React.useContext(ToastContext); }
 
-Object.assign(window, { Icon, Btn, Badge, Card, KPI, Modal, Field, Input, Select, Textarea, BarChart, DonutChart, LineChart, Legend, EmptyState, ToastProvider, useToast });
+// ----- Hook de responsividade -----
+function useIsMobile(breakpoint = 768) {
+  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth <= breakpoint : false);
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= breakpoint);
+    onResize();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [breakpoint]);
+  return isMobile;
+}
+
+Object.assign(window, { Icon, Btn, Badge, Card, KPI, Modal, Field, Input, Select, Textarea, BarChart, DonutChart, LineChart, Legend, EmptyState, ToastProvider, useToast, useIsMobile });

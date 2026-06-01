@@ -99,10 +99,10 @@ function lancStatus(l, hojeISO) {
 
 function statusColor(status) {
   return {
-    'pago': { bg: '#dcfce7', fg: '#166534', dot: '#16a34a', label: 'Pago' },
-    'em-dia': { bg: '#dbeafe', fg: '#1e40af', dot: '#3b82f6', label: 'Em dia' },
-    'vencendo': { bg: '#fef3c7', fg: '#92400e', dot: '#f59e0b', label: 'Vencendo' },
-    'vencido': { bg: '#fee2e2', fg: '#991b1b', dot: '#ef4444', label: 'Vencido' },
+    'pago': { bg: 'var(--c-green-bg)', fg: 'var(--c-green-fg)', dot: '#16a34a', label: 'Pago' },
+    'em-dia': { bg: 'var(--c-blue-bg)', fg: 'var(--c-blue-fg)', dot: '#3b82f6', label: 'Em dia' },
+    'vencendo': { bg: 'var(--c-amber-bg)', fg: 'var(--c-amber-fg)', dot: '#f59e0b', label: 'Vencendo' },
+    'vencido': { bg: 'var(--c-red-bg)', fg: 'var(--c-red-fg)', dot: '#ef4444', label: 'Vencido' },
   }[status];
 }
 

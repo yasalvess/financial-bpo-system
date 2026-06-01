@@ -3,13 +3,14 @@ const { useState: useState_W, useMemo: useMemo_W } = React;
 
 function WorkspaceEmpresa({ empresa, lancamentos, portadores, centrosCusto, formasPagamento, onBack, onUpsertLanc, onDeleteLanc, onPayLanc }) {
   const [aba, setAba] = useState_W('contas');
+  const [novoLancHeader, setNovoLancHeader] = useState_W(null);
   const hoje = todayISO();
   const stats = useMemo_W(() => empresaStats(empresa, lancamentos, hoje), [empresa, lancamentos, hoje]);
 
   return (
     <div>
       {/* Header da empresa */}
-      <div style={{ background: '#fff', borderBottom: '1px solid var(--c-border)', padding: '20px 28px' }}>
+      <div style={{ background: 'var(--c-surface)', borderBottom: '1px solid var(--c-border)', padding: '20px 28px' }}>
         <button onClick={onBack} style={{
           background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-text-muted)',
           fontSize: 13, padding: 0, marginBottom: 12, display: 'inline-flex', alignItems: 'center', gap: 4
@@ -35,12 +36,24 @@ function WorkspaceEmpresa({ empresa, lancamentos, portadores, centrosCusto, form
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <Btn variant="primary" icon="plus" onClick={() => setAba('contas') || setNovoLanc({})}>Novo Lançamento</Btn>
+            <Btn variant="primary" icon="plus" onClick={() => setNovoLancHeader({
+              id: uid('lanc'),
+              tipo: 'saida',
+              vencimento: todayISO(),
+              competencia: competenciaFromDate(todayISO()),
+              valor: '',
+              descricao: '',
+              portadorId: portadores[0]?.id || '',
+              centroCustoId: centrosCusto.find(c => c.tipo === 'saida')?.id || '',
+              formaPagamento: formasPagamento[0] || 'PIX',
+              pago: false,
+              observacao: ''
+            })}>Novo Lançamento</Btn>
           </div>
         </div>
 
         {/* Tabs */}
-        <div style={{ display: 'flex', gap: 4, marginTop: 22, borderBottom: '1px solid transparent', marginBottom: -21 }}>
+        <div style={{ display: 'flex', gap: 4, marginTop: 22, borderBottom: '1px solid transparent', marginBottom: -21, overflowX: 'auto' }}>
           {[
             { id: 'contas', label: 'Contas a Pagar/Receber', icon: 'list', count: lancamentos.length },
             { id: 'portadores', label: 'Portadores', icon: 'bank' },
@@ -51,12 +64,12 @@ function WorkspaceEmpresa({ empresa, lancamentos, portadores, centrosCusto, form
               padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer',
               fontSize: 13, fontWeight: 600, color: aba === t.id ? 'var(--c-primary)' : 'var(--c-text-muted)',
               borderBottom: `2px solid ${aba === t.id ? 'var(--c-primary)' : 'transparent'}`,
-              display: 'inline-flex', alignItems: 'center', gap: 6,
+              display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0, whiteSpace: 'nowrap',
               fontFamily: 'inherit'
             }}>
               <Icon name={t.icon} size={15} />
               {t.label}
-              {t.count != null && <span style={{ fontSize: 11, background: aba === t.id ? 'var(--c-primary-soft)' : '#f1f5f9', color: aba === t.id ? 'var(--c-primary)' : 'var(--c-text-muted)', padding: '1px 7px', borderRadius: 99, fontWeight: 600 }}>{t.count}</span>}
+              {t.count != null && <span style={{ fontSize: 11, background: aba === t.id ? 'var(--c-primary-soft)' : 'var(--c-bg)', color: aba === t.id ? 'var(--c-primary)' : 'var(--c-text-muted)', padding: '1px 7px', borderRadius: 99, fontWeight: 600 }}>{t.count}</span>}
             </button>
           ))}
         </div>
@@ -69,6 +82,20 @@ function WorkspaceEmpresa({ empresa, lancamentos, portadores, centrosCusto, form
         {aba === 'centros' && <CentrosTab {...{ empresa, lancamentos, centrosCusto }} />}
         {aba === 'relatorio' && <RelatorioTab {...{ empresa, lancamentos, portadores, centrosCusto, formasPagamento }} />}
       </div>
+
+      {novoLancHeader && (
+        <LancamentoFormModal
+          lanc={novoLancHeader}
+          portadores={portadores}
+          centrosCusto={centrosCusto}
+          formasPagamento={formasPagamento}
+          onClose={() => setNovoLancHeader(null)}
+          onSave={(l) => {
+            onUpsertLanc({ ...l, empresaId: empresa.id });
+            setNovoLancHeader(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -126,15 +153,12 @@ function ContasTab({ empresa, lancamentos, portadores, centrosCusto, formasPagam
       {/* Filtros */}
       <Card padding={14} style={{ marginBottom: 14 }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 1fr 1fr 1fr 1fr auto', gap: 8, alignItems: 'end' }}>
-          <Field label="Buscar descrição">
-            <div style={{ position: 'relative' }}>
+          <div style={{ position: 'relative' }}>
+            <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', display: 'flex' }}>
               <Icon name="search" size={14} color="var(--c-text-muted)" />
-              <Input value={filtros.busca} onChange={e => setFiltros({ ...filtros, busca: e.target.value })} placeholder="Buscar..." style={{ paddingLeft: 30, position: 'relative' }} />
-              <div style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
-                <Icon name="search" size={14} color="var(--c-text-muted)" />
-              </div>
-            </div>
-          </Field>
+            </span>
+            <Input value={filtros.busca} onChange={e => setFiltros({ ...filtros, busca: e.target.value })} placeholder="Buscar descrição..." style={{ paddingLeft: 34 }} />
+          </div>
           <Field label="Tipo">
             <Select value={filtros.tipo} onChange={e => setFiltros({ ...filtros, tipo: e.target.value })}>
               <option value="todos">Todos</option>
@@ -187,7 +211,7 @@ function ContasTab({ empresa, lancamentos, portadores, centrosCusto, formasPagam
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
-              <tr style={{ background: '#fafafa', borderBottom: '1px solid var(--c-border)' }}>
+              <tr style={{ background: 'var(--c-bg)', borderBottom: '1px solid var(--c-border)' }}>
                 <th style={th}>Vencimento</th>
                 <th style={th}>Tipo</th>
                 <th style={th}>Descrição</th>
@@ -213,8 +237,8 @@ function ContasTab({ empresa, lancamentos, portadores, centrosCusto, formasPagam
                     </td>
                     <td style={td}>
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 6,
-                        background: l.tipo === 'entrada' ? '#dcfce7' : '#fee2e2',
-                        color: l.tipo === 'entrada' ? '#166534' : '#991b1b', fontSize: 11, fontWeight: 600 }}>
+                        background: l.tipo === 'entrada' ? 'var(--c-green-bg)' : 'var(--c-red-bg)',
+                        color: l.tipo === 'entrada' ? 'var(--c-green-fg)' : 'var(--c-red-fg)', fontSize: 11, fontWeight: 600 }}>
                         <Icon name={l.tipo === 'entrada' ? 'arrowDown' : 'arrowUp'} size={11} />
                         {l.tipo === 'entrada' ? 'Entrada' : 'Saída'}
                       </div>
@@ -343,7 +367,7 @@ function LancamentoFormModal({ lanc, portadores, centrosCusto, formasPagamento, 
               <button key={opt.v} type="button" onClick={() => set('tipo', opt.v)} style={{
                 padding: '10px 14px', borderRadius: 8, cursor: 'pointer',
                 border: `2px solid ${f.tipo === opt.v ? opt.cor : 'var(--c-border)'}`,
-                background: f.tipo === opt.v ? `${opt.cor}10` : '#fff',
+                background: f.tipo === opt.v ? `${opt.cor}10` : 'var(--c-surface)',
                 color: f.tipo === opt.v ? opt.cor : 'var(--c-text)',
                 fontWeight: 600, fontSize: 13, fontFamily: 'inherit',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
@@ -402,7 +426,7 @@ function PagamentoModal({ lanc, portadores, centrosCusto, onClose, onConfirm }) 
           Confirmar {isEntrada ? 'Recebimento' : 'Pagamento'}
         </Btn>
       </>}>
-      <div style={{ background: '#fafafa', borderRadius: 10, padding: 14, marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ background: 'var(--c-bg)', borderRadius: 10, padding: 14, marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <div style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>{isEntrada ? 'Receber de' : 'Pagar para'}</div>
           <div style={{ fontWeight: 600 }}>{lanc.descricao}</div>
@@ -420,7 +444,7 @@ function PagamentoModal({ lanc, portadores, centrosCusto, onClose, onConfirm }) 
           </Select>
         </Field>
       </div>
-      <div style={{ marginTop: 16, padding: 12, background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, fontSize: 12, color: '#0c4a6e', display: 'flex', gap: 8 }}>
+      <div style={{ marginTop: 16, padding: 12, background: 'var(--c-blue-bg)', border: '1px solid rgba(37, 99, 235, 0.3)', borderRadius: 8, fontSize: 12, color: 'var(--c-blue-fg)', display: 'flex', gap: 8 }}>
         <Icon name="receipt" size={16} />
         Um comprovante será gerado automaticamente e o saldo do {portMap[portadorId]?.nome} será atualizado.
       </div>
@@ -433,9 +457,9 @@ function ComprovanteModal({ lanc, empresa, portador, centro, onClose }) {
   return (
     <Modal open onClose={onClose} title="Comprovante" width={480}
       footer={<Btn variant="primary" onClick={() => window.print()}>Imprimir</Btn>}>
-      <div style={{ border: '2px dashed var(--c-border)', borderRadius: 10, padding: 24, background: '#fafafa' }}>
+      <div style={{ border: '2px dashed var(--c-border)', borderRadius: 10, padding: 24, background: 'var(--c-bg)' }}>
         <div style={{ textAlign: 'center', marginBottom: 16 }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 44, height: 44, borderRadius: 99, background: '#dcfce7', color: '#16a34a', marginBottom: 10 }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 44, height: 44, borderRadius: 99, background: 'var(--c-green-bg)', color: 'var(--c-green-fg)', marginBottom: 10 }}>
             <Icon name="check" size={24} />
           </div>
           <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: '0.08em', color: 'var(--c-text-muted)', textTransform: 'uppercase' }}>COMPROVANTE DE {lanc.tipo === 'entrada' ? 'RECEBIMENTO' : 'PAGAMENTO'}</div>
@@ -480,7 +504,7 @@ function PortadoresTab({ empresa, lancamentos, portadores }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 18 }}>
         {saldos.map(p => (
           <div key={p.id} onClick={() => setSelPort(p.id)} style={{
-            background: '#fff', borderRadius: 12, padding: 16, cursor: 'pointer',
+            background: 'var(--c-surface)', borderRadius: 12, padding: 16, cursor: 'pointer',
             border: `2px solid ${selPort === p.id ? p.cor : 'var(--c-border)'}`, transition: 'all 0.15s'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
@@ -516,7 +540,7 @@ function PortadoresTab({ empresa, lancamentos, portadores }) {
         </div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
-            <tr style={{ background: '#fafafa', borderBottom: '1px solid var(--c-border)' }}>
+            <tr style={{ background: 'var(--c-bg)', borderBottom: '1px solid var(--c-border)' }}>
               <th style={th}>Data Pgto.</th>
               <th style={th}>Descrição</th>
               <th style={th}>Forma</th>
@@ -571,12 +595,12 @@ function CentrosTab({ empresa, lancamentos, centrosCusto }) {
                     <span style={{ color: 'var(--c-text-muted)', marginLeft: 8, fontSize: 11 }}>{pct.toFixed(1)}%</span>
                   </div>
                 </div>
-                <div style={{ height: 8, background: '#f1f5f9', borderRadius: 4, overflow: 'hidden' }}>
+                <div style={{ height: 8, background: 'var(--c-bg)', borderRadius: 4, overflow: 'hidden' }}>
                   <div style={{ height: '100%', width: `${pct}%`, background: cor, borderRadius: 4, transition: 'width 0.3s' }} />
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3, fontSize: 11, color: 'var(--c-text-muted)' }}>
                   <span>{c.qtd} lançamento{c.qtd !== 1 ? 's' : ''}</span>
-                  <span>Pendente: <strong style={{ color: c.pendente > 0 ? '#92400e' : 'var(--c-text-muted)' }}>{formatBRL(c.pendente)}</strong></span>
+                  <span>Pendente: <strong style={{ color: c.pendente > 0 ? 'var(--c-amber-fg)' : 'var(--c-text-muted)' }}>{formatBRL(c.pendente)}</strong></span>
                 </div>
               </div>
             );
@@ -725,7 +749,7 @@ function RelatorioTab({ empresa, lancamentos, portadores, centrosCusto, formasPa
             })}
           </tbody>
           <tfoot>
-            <tr style={{ background: '#fafafa' }}>
+            <tr style={{ background: 'var(--c-bg)' }}>
               <td style={{ ...td, fontWeight: 700 }}>TOTAL</td>
               <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: '#16a34a', fontVariantNumeric: 'tabular-nums' }}>{formatBRL(seriesMes.reduce((s, x) => s + x.entrada, 0))}</td>
               <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: '#dc2626', fontVariantNumeric: 'tabular-nums' }}>{formatBRL(seriesMes.reduce((s, x) => s + x.saida, 0))}</td>

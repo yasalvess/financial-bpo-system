@@ -25,6 +25,26 @@ function App() {
   const [editEmp, setEditEmp] = useState_A(null);
   const [notifOpen, setNotifOpen] = useState_A(false);
   const [empresasOpen, setEmpresasOpen] = useState_A(false);
+  const [perfilOpen, setPerfilOpen] = useState_A(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState_A(false);
+  const isMobile = useIsMobile(768);
+  const [perfil, setPerfil] = useState_A({
+    nome: 'Karla Silva',
+    email: 'karla@ksgestao.com.br',
+    telefone: '(11) 99999-0000',
+    cargo: 'Administradora',
+    inicial: 'K',
+    foto: null,
+  });
+  const [empresaInfo, setEmpresaInfo] = useState_A({
+    razaoSocial: 'KS Gestão & BPO Financeiro Ltda',
+    nomeFantasia: 'KS Gestão',
+    cnpj: '12.345.678/0001-00',
+    rua: 'Av. Paulista', numero: '1000', bairro: 'Bela Vista',
+    cidade: 'São Paulo', estado: 'SP', cep: '01310-100',
+    telefone: '(11) 3000-0000', email: 'contato@ksgestao.com.br',
+    logo: null,
+  });
   const [t, setTweak] = useTweaks(DEFAULT_TWEAKS);
 
   useEffect_A(() => {
@@ -65,6 +85,8 @@ function App() {
         setSearchOpen(false);
         setNotifOpen(false);
         setEmpresasOpen(false);
+        setPerfilOpen(false);
+        setMobileNavOpen(false);
       }
     }
     window.addEventListener('keydown', onKey);
@@ -76,10 +98,15 @@ function App() {
     function onClick(e) {
       if (!e.target.closest('[data-dropdown="empresas"]')) setEmpresasOpen(false);
       if (!e.target.closest('[data-dropdown="notif"]')) setNotifOpen(false);
+      if (!e.target.closest('[data-dropdown="perfil"]')) setPerfilOpen(false);
     }
     document.addEventListener('mousedown', onClick);
     return () => document.removeEventListener('mousedown', onClick);
   }, []);
+
+  function updatePortadores(portadores) { setData(d => ({ ...d, portadores })); }
+  function updateCentros(centrosCusto) { setData(d => ({ ...d, centrosCusto })); }
+  function updateFormas(formasPagamento) { setData(d => ({ ...d, formasPagamento })); }
 
   function createEmpresa(emp) {
     setData(d => ({ ...d, empresas: [...d.empresas, emp], lancamentos: { ...d.lancamentos, [emp.id]: [] } }));
@@ -137,6 +164,7 @@ function App() {
     if (route.view === 'central') return [{ label: 'Central de Gestão' }];
     if (route.view === 'lancamentos') return [{ label: 'Lançamentos' }];
     if (route.view === 'relatorios') return [{ label: 'Relatórios' }];
+    if (route.view === 'configuracoes') return [{ label: 'Configurações' }];
     if (route.view === 'empresa' && currentEmpresa) {
       return [{ label: 'Central de Gestão', onClick: () => setRoute({ view: 'central' }) }, { label: currentEmpresa.nome }];
     }
@@ -145,11 +173,14 @@ function App() {
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--c-bg)' }}>
-      <Sidebar collapsed={collapsed} setCollapsed={v => setTweak('sidebarCollapsed', v)} route={route} setRoute={setRoute} />
+      <Sidebar collapsed={collapsed} setCollapsed={v => setTweak('sidebarCollapsed', v)} route={route} setRoute={setRoute}
+        isMobile={isMobile} mobileOpen={mobileNavOpen} onCloseMobile={() => setMobileNavOpen(false)} />
 
       <main style={{ flex: 1, minWidth: 0, background: 'var(--c-bg)', display: 'flex', flexDirection: 'column' }}>
         <TopBar
           breadcrumb={breadcrumb}
+          isMobile={isMobile}
+          onMenuClick={() => setMobileNavOpen(o => !o)}
           onSearchClick={() => setSearchOpen(true)}
           notifCount={notifs.length}
           notifOpen={notifOpen}
@@ -162,6 +193,10 @@ function App() {
           data={data}
           onSelectEmpresa={(id) => { setRoute({ view: 'empresa', id }); setEmpresasOpen(false); }}
           onNewEmpresa={() => { setEmpresasOpen(false); setNewEmpOpen(true); }}
+          perfil={perfil}
+          perfilOpen={perfilOpen}
+          onPerfilClick={() => { setPerfilOpen(o => !o); setNotifOpen(false); setEmpresasOpen(false); }}
+          onOpenSettings={(tab) => { setRoute({ view: 'configuracoes', tab }); setPerfilOpen(false); }}
         />
 
         <div style={{ flex: 1 }}>
@@ -190,6 +225,25 @@ function App() {
           )}
           {route.view === 'lancamentos' && <LancamentosGlobais data={data} onOpenEmpresa={(id) => setRoute({ view: 'empresa', id })} />}
           {route.view === 'relatorios' && <RelatoriosConsolidados data={data} />}
+          {route.view === 'configuracoes' && (
+            <Configuracoes
+              initialTab={route.tab}
+              perfil={perfil}
+              onUpdatePerfil={(novo) => setPerfil(p => ({ ...p, ...novo }))}
+              empresaInfo={empresaInfo}
+              onUpdateEmpresaInfo={(novo) => setEmpresaInfo(p => ({ ...p, ...novo }))}
+              portadores={data.portadores}
+              centrosCusto={data.centrosCusto}
+              formasPagamento={data.formasPagamento}
+              onUpdatePortadores={updatePortadores}
+              onUpdateCentros={updateCentros}
+              onUpdateFormas={updateFormas}
+              tweaks={t}
+              setTweak={setTweak}
+              colorOptions={COLOR_OPTIONS}
+              fontOptions={FONT_OPTIONS}
+            />
+          )}
         </div>
       </main>
 
@@ -235,20 +289,37 @@ function App() {
 }
 
 // ----- Sidebar — SEM lista de empresas -----
-function Sidebar({ collapsed, setCollapsed, route, setRoute }) {
+function Sidebar({ collapsed, setCollapsed, route, setRoute, isMobile, mobileOpen, onCloseMobile }) {
   const items = [
     { id: 'central', label: 'Central de Gestão', icon: 'home', view: 'central' },
     { id: 'lancamentos', label: 'Lançamentos', icon: 'list', view: 'lancamentos' },
     { id: 'relatorios', label: 'Relatórios', icon: 'chart', view: 'relatorios' },
   ];
+  // No mobile o menu é sempre expandido (drawer); no desktop respeita o colapso
+  collapsed = isMobile ? false : collapsed;
   const w = collapsed ? 64 : 220;
+  const navigate = (view) => { setRoute({ view }); if (isMobile) onCloseMobile(); };
+  const asideStyle = isMobile
+    ? {
+        width: 240, background: 'var(--c-bg-sidebar)', color: '#fff',
+        display: 'flex', flexDirection: 'column',
+        position: 'fixed', top: 0, left: 0, height: '100vh', zIndex: 1000,
+        transform: mobileOpen ? 'translateX(0)' : 'translateX(-100%)',
+        transition: 'transform 0.25s ease', overflow: 'hidden',
+        boxShadow: mobileOpen ? '0 0 40px rgba(0,0,0,.4)' : 'none'
+      }
+    : {
+        width: w, background: 'var(--c-bg-sidebar)', color: '#fff',
+        display: 'flex', flexDirection: 'column', flexShrink: 0,
+        position: 'sticky', top: 0, height: '100vh',
+        transition: 'width 0.22s ease', overflow: 'hidden'
+      };
   return (
-    <aside style={{
-      width: w, background: 'var(--c-bg-sidebar)', color: '#fff',
-      display: 'flex', flexDirection: 'column', flexShrink: 0,
-      position: 'sticky', top: 0, height: '100vh',
-      transition: 'width 0.22s ease', overflow: 'hidden'
-    }}>
+    <>
+    {isMobile && mobileOpen && (
+      <div onClick={onCloseMobile} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.5)', backdropFilter: 'blur(2px)', zIndex: 999 }} />
+    )}
+    <aside style={asideStyle}>
       {/* Logo */}
       <div style={{ padding: collapsed ? '20px 13px' : '20px 16px', display: 'flex', alignItems: 'center', gap: 10, height: 64, boxSizing: 'border-box', flexShrink: 0 }}>
         <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--c-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16, color: '#fff', flexShrink: 0, letterSpacing: '-0.02em' }}>K</div>
@@ -272,7 +343,7 @@ function Sidebar({ collapsed, setCollapsed, route, setRoute }) {
         {items.map(item => {
           const active = route.view === item.view || (route.view === 'empresa' && item.view === 'central');
           return (
-            <button key={item.id} onClick={() => setRoute({ view: item.view })} title={collapsed ? item.label : undefined}
+            <button key={item.id} onClick={() => navigate(item.view)} title={collapsed ? item.label : undefined}
               style={{
                 background: active ? 'rgba(var(--c-primary-rgb), 0.16)' : 'transparent',
                 color: active ? '#fff' : 'rgba(255,255,255,.6)',
@@ -306,11 +377,11 @@ function Sidebar({ collapsed, setCollapsed, route, setRoute }) {
               <div style={{ color: '#fff', fontWeight: 600, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Karla Silva</div>
               <div style={{ fontSize: 10, color: 'rgba(255,255,255,.4)' }}>Administradora</div>
             </div>
-            <button onClick={() => setCollapsed(true)} style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,.35)', cursor: 'pointer', padding: 4, borderRadius: 6, transition: 'color 0.15s', flexShrink: 0 }}
+            <button onClick={() => isMobile ? onCloseMobile() : setCollapsed(true)} style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,.35)', cursor: 'pointer', padding: 4, borderRadius: 6, transition: 'color 0.15s', flexShrink: 0 }}
               onMouseEnter={e => e.currentTarget.style.color = '#fff'}
               onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,.35)'}
             >
-              <Icon name="arrowLeft" size={14} />
+              <Icon name={isMobile ? 'x' : 'arrowLeft'} size={14} />
             </button>
           </div>
         ) : (
@@ -326,21 +397,29 @@ function Sidebar({ collapsed, setCollapsed, route, setRoute }) {
         )}
       </div>
     </aside>
+    </>
   );
 }
 
 // ----- TopBar -----
-function TopBar({ breadcrumb, onSearchClick, notifCount, onNotifClick, notifOpen, notifs, onNotifSelect, empresasCount, empresasOpen, onEmpresasClick, data, onSelectEmpresa, onNewEmpresa }) {
+function TopBar({ breadcrumb, isMobile, onMenuClick, onSearchClick, notifCount, onNotifClick, notifOpen, notifs, onNotifSelect, empresasCount, empresasOpen, onEmpresasClick, data, onSelectEmpresa, onNewEmpresa, perfil, perfilOpen, onPerfilClick, onOpenSettings }) {
   return (
     <header style={{
       background: 'var(--c-surface)', borderBottom: '1px solid var(--c-border)',
-      padding: '0 20px', height: 58, display: 'flex', alignItems: 'center', gap: 12,
+      padding: isMobile ? '0 12px' : '0 20px', height: 58, display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 12,
       position: 'sticky', top: 0, zIndex: 50
     }}>
 
+      {/* Botão de menu (mobile) */}
+      {isMobile && (
+        <button onClick={onMenuClick} title="Menu" style={topBarBtn}>
+          <Icon name="menu" size={20} />
+        </button>
+      )}
+
       {/* Breadcrumb */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, flex: 1, minWidth: 0 }}>
-        {breadcrumb.map((b, i) => (
+        {!isMobile && breadcrumb.map((b, i) => (
           <React.Fragment key={i}>
             {i > 0 && <Icon name="chevronRight" size={12} color="var(--c-text-muted)" />}
             {b.onClick ? (
@@ -356,28 +435,34 @@ function TopBar({ breadcrumb, onSearchClick, notifCount, onNotifClick, notifOpen
       </div>
 
       {/* Centro: busca */}
-      <button onClick={onSearchClick} style={{
-        background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 9,
-        padding: '7px 12px', display: 'flex', alignItems: 'center', gap: 9,
-        cursor: 'pointer', fontSize: 13, color: 'var(--c-text-muted)',
-        width: 300, fontFamily: 'inherit', transition: 'border-color 0.15s, box-shadow 0.15s',
-        flexShrink: 0
-      }}
-        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--c-primary)'; e.currentTarget.style.boxShadow = '0 0 0 3px var(--c-primary-soft)'; }}
-        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--c-border)'; e.currentTarget.style.boxShadow = 'none'; }}
-      >
-        <Icon name="search" size={14} color="var(--c-text-muted)" />
-        <span style={{ flex: 1, textAlign: 'left', userSelect: 'none' }}>Pesquisar...</span>
-        <kbd style={kbdStyle}>⌘K</kbd>
-      </button>
+      {isMobile ? (
+        <button onClick={onSearchClick} title="Pesquisar" style={topBarBtn}>
+          <Icon name="search" size={18} />
+        </button>
+      ) : (
+        <button onClick={onSearchClick} style={{
+          background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 9,
+          padding: '7px 12px', display: 'flex', alignItems: 'center', gap: 9,
+          cursor: 'pointer', fontSize: 13, color: 'var(--c-text-muted)',
+          width: 300, fontFamily: 'inherit', transition: 'border-color 0.15s, box-shadow 0.15s',
+          flexShrink: 0
+        }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--c-primary)'; e.currentTarget.style.boxShadow = '0 0 0 3px var(--c-primary-soft)'; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--c-border)'; e.currentTarget.style.boxShadow = 'none'; }}
+        >
+          <Icon name="search" size={14} color="var(--c-text-muted)" />
+          <span style={{ flex: 1, textAlign: 'left', userSelect: 'none' }}>Pesquisar...</span>
+          <kbd style={kbdStyle}>⌘K</kbd>
+        </button>
+      )}
 
       {/* Direita */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
 
         {/* Botão Empresas com dropdown */}
         <div data-dropdown="empresas" style={{ position: 'relative' }}>
-          <button onClick={onEmpresasClick} style={{
-            display: 'flex', alignItems: 'center', gap: 6, padding: '6px 11px',
+          <button onClick={onEmpresasClick} title="Empresas" style={{
+            display: 'flex', alignItems: 'center', gap: 6, padding: isMobile ? '7px 9px' : '6px 11px',
             background: empresasOpen ? 'var(--c-primary-soft)' : 'var(--c-bg)',
             border: `1px solid ${empresasOpen ? 'var(--c-primary)' : 'var(--c-border)'}`,
             borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit',
@@ -389,16 +474,18 @@ function TopBar({ breadcrumb, onSearchClick, notifCount, onNotifClick, notifOpen
             onMouseLeave={e => { if (!empresasOpen) { e.currentTarget.style.borderColor = 'var(--c-border)'; e.currentTarget.style.color = 'var(--c-text)'; } }}
           >
             <Icon name="building" size={15} />
-            <span style={{ whiteSpace: 'nowrap' }}>Empresas</span>
+            {!isMobile && <span style={{ whiteSpace: 'nowrap' }}>Empresas</span>}
             <span style={{
-              background: empresasOpen ? 'var(--c-primary)' : '#e2e8f0',
+              background: empresasOpen ? 'var(--c-primary)' : 'var(--c-border)',
               color: empresasOpen ? '#fff' : 'var(--c-text-muted)',
               fontSize: 11, fontWeight: 700, padding: '0px 6px', borderRadius: 99, lineHeight: '18px',
               transition: 'all 0.15s', minWidth: 20, textAlign: 'center', display: 'inline-block'
             }}>{empresasCount}</span>
-            <span style={{ transition: 'transform 0.15s', transform: empresasOpen ? 'rotate(180deg)' : 'none', display: 'flex' }}>
-              <Icon name="chevronDown" size={13} />
-            </span>
+            {!isMobile && (
+              <span style={{ transition: 'transform 0.15s', transform: empresasOpen ? 'rotate(180deg)' : 'none', display: 'flex' }}>
+                <Icon name="chevronDown" size={13} />
+              </span>
+            )}
           </button>
 
           {empresasOpen && (
@@ -410,7 +497,7 @@ function TopBar({ breadcrumb, onSearchClick, notifCount, onNotifClick, notifOpen
           )}
         </div>
 
-        <div style={{ width: 1, height: 20, background: 'var(--c-border)' }} />
+        {!isMobile && <div style={{ width: 1, height: 20, background: 'var(--c-border)' }} />}
 
         {/* Notificações */}
         <div data-dropdown="notif" style={{ position: 'relative' }}>
@@ -428,17 +515,28 @@ function TopBar({ breadcrumb, onSearchClick, notifCount, onNotifClick, notifOpen
           {notifOpen && <NotifDropdown notifs={notifs} onSelect={onNotifSelect} />}
         </div>
 
-        <button style={topBarBtn} title="Configurações"
-          onMouseEnter={e => { e.currentTarget.style.background = 'var(--c-bg)'; e.currentTarget.style.color = 'var(--c-text)'; }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--c-text-muted)'; }}
-        ><Icon name="settings" size={17} /></button>
+        {!isMobile && (
+          <button style={topBarBtn} title="Configurações" onClick={() => onOpenSettings()}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--c-bg)'; e.currentTarget.style.color = 'var(--c-text)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--c-text-muted)'; }}
+          ><Icon name="settings" size={17} /></button>
+        )}
 
-        <div style={{ width: 1, height: 20, background: 'var(--c-border)' }} />
+        {!isMobile && <div style={{ width: 1, height: 20, background: 'var(--c-border)' }} />}
 
-        {/* Avatar */}
-        <button style={{ ...topBarBtn, width: 34, height: 34, borderRadius: 99, background: 'var(--c-primary)', color: '#fff', border: 'none' }}>
-          <span style={{ fontWeight: 700, fontSize: 13 }}>K</span>
-        </button>
+        {/* Avatar + dropdown de perfil */}
+        <div data-dropdown="perfil" style={{ position: 'relative' }}>
+          <button onClick={onPerfilClick} title="Perfil" style={{
+            ...topBarBtn, width: 34, height: 34, borderRadius: 99,
+            background: 'var(--c-primary)', color: '#fff', border: 'none',
+            boxShadow: perfilOpen ? '0 0 0 3px var(--c-primary-soft)' : 'none', overflow: 'hidden'
+          }}>
+            {perfil?.foto
+              ? <img src={perfil.foto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              : <span style={{ fontWeight: 700, fontSize: 13 }}>{perfil?.inicial || (perfil?.nome || 'K').charAt(0)}</span>}
+          </button>
+          {perfilOpen && <PerfilDropdown perfil={perfil} onOpenSettings={onOpenSettings} />}
+        </div>
       </div>
     </header>
   );
@@ -609,6 +707,66 @@ function NotifDropdown({ notifs, onSelect }) {
   );
 }
 
+// ----- Dropdown de Perfil -----
+function PerfilDropdown({ perfil, onOpenSettings }) {
+  const itemStyle = {
+    width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+    padding: '9px 14px', background: 'transparent', border: 'none',
+    cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', fontSize: 13,
+    color: 'var(--c-text)', transition: 'background 0.1s'
+  };
+  const items = [
+    { icon: 'user', label: 'Meu Perfil', tab: 'perfil' },
+    { icon: 'building', label: 'Minha Empresa', tab: 'empresa' },
+    { icon: 'settings', label: 'Configurações', tab: 'aparencia' },
+  ];
+  return (
+    <div style={{
+      position: 'absolute', top: 'calc(100% + 8px)', right: 0, width: 260,
+      background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 12,
+      boxShadow: '0 12px 40px rgba(15,23,42,.13)', zIndex: 200, overflow: 'hidden',
+      animation: 'dropIn 0.14s cubic-bezier(.16,1,.3,1)'
+    }}>
+      {/* Cabeçalho */}
+      <div style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '1px solid var(--c-border)' }}>
+        <div style={{ width: 40, height: 40, borderRadius: 99, background: 'var(--c-primary)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 16, flexShrink: 0, overflow: 'hidden' }}>
+          {perfil?.foto
+            ? <img src={perfil.foto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            : (perfil?.inicial || (perfil?.nome || 'K').charAt(0))}
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{perfil?.nome}</div>
+          <div style={{ fontSize: 11, color: 'var(--c-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{perfil?.email}</div>
+          <div style={{ fontSize: 11, color: 'var(--c-primary)', fontWeight: 600, marginTop: 1 }}>{perfil?.cargo}</div>
+        </div>
+      </div>
+
+      <div style={{ padding: '6px 0' }}>
+        {items.map(it => (
+          <button key={it.tab} onClick={() => onOpenSettings(it.tab)} style={itemStyle}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--c-bg)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+          >
+            <Icon name={it.icon} size={16} color="var(--c-text-muted)" />
+            {it.label}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ height: 1, background: 'var(--c-border)' }} />
+      <div style={{ padding: '6px 0' }}>
+        <button style={{ ...itemStyle, color: '#dc2626' }}
+          onMouseEnter={e => e.currentTarget.style.background = '#fef2f2'}
+          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+        >
+          <Icon name="logout" size={16} color="#dc2626" />
+          Sair
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const topBarBtn = {
   background: 'transparent', border: 'none', cursor: 'pointer',
   width: 34, height: 34, borderRadius: 8, color: 'var(--c-text-muted)',
@@ -727,8 +885,8 @@ function EmpresaWizard({ empresa, portadores, centrosCusto, onClose, onSave, onD
   const [f, setF] = useState_A(empresa || {
     id: uid('emp'), nome: '', cnpj: '', nomeFantasia: '', segmento: '',
     responsavel: '', email: '', telefone: '',
-    portadoresAtivos: portadores.map(p => p.id),
-    centrosAtivos: centrosCusto.map(c => c.id),
+    portadoresAtivos: [],
+    centrosAtivos: [],
     criadaEm: todayISO()
   });
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
