@@ -19,6 +19,7 @@ const ABAS_CONFIG = [
   { id: 'formas', label: 'Formas de Pagamento', icon: 'creditCard' },
   { id: 'notificacoes', label: 'Notificações', icon: 'bell' },
   { id: 'aparencia', label: 'Aparência', icon: 'settings' },
+  { id: 'backup', label: 'Backup de Dados', icon: 'download' },
 ];
 
 function Configuracoes(props) {
@@ -79,6 +80,7 @@ function Configuracoes(props) {
           {aba === 'formas' && <FormasConfigTab formas={formasPagamento} onSave={onSaveForma} onDelete={onDeleteForma} />}
           {aba === 'notificacoes' && <AbaNotificacoes session={session} />}
           {aba === 'aparencia' && <AparenciaTab tweaks={tweaks} setTweak={setTweak} colorOptions={colorOptions} fontOptions={fontOptions} />}
+          {aba === 'backup' && <AbaBackup data={props.data} />}
         </div>
       </div>
     </div>
@@ -268,9 +270,9 @@ function PortadorModal({ portador, onClose, onSave }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <Field label="Nome" required><Input value={f.nome} onChange={e => set('nome', e.target.value)} placeholder="Ex: Bradesco" autoFocus /></Field>
         <Field label="Tipo" required>
-          <Select value={f.tipo} onChange={e => set('tipo', e.target.value)}>
-            {TIPOS_PORTADOR.map(t => <option key={t.v} value={t.v}>{t.label}</option>)}
-          </Select>
+          <CustomSelect value={f.tipo} onChange={e => set('tipo', e.target.value)} options={[
+            ...TIPOS_PORTADOR.map(t => ({ value: t.v, label: t.label }))
+          ]} />
         </Field>
         <Field label="Cor">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -341,10 +343,10 @@ function CentroModal({ centro, onClose, onSave }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <Field label="Nome" required><Input value={f.nome} onChange={e => set('nome', e.target.value)} placeholder="Ex: Marketing" autoFocus /></Field>
         <Field label="Tipo" required>
-          <Select value={f.tipo} onChange={e => set('tipo', e.target.value)}>
-            <option value="entrada">Entrada (receita)</option>
-            <option value="saida">Saída (despesa)</option>
-          </Select>
+          <CustomSelect value={f.tipo} onChange={e => set('tipo', e.target.value)} options={[
+            { value: "entrada", label: "Entrada (receita)" },
+            { value: "saida", label: "Saída (despesa)" }
+          ]} />
         </Field>
       </div>
     </Modal>
@@ -443,9 +445,9 @@ function AparenciaTab({ tweaks, setTweak, colorOptions, fontOptions }) {
         </ConfigRow>
 
         <ConfigRow label="Fonte" hint="Família tipográfica da interface">
-          <Select value={tweaks.fontFamily} onChange={e => setTweak('fontFamily', e.target.value)} style={{ width: 180 }}>
-            {(fontOptions || []).map(f => <option key={f} value={f}>{f}</option>)}
-          </Select>
+          <CustomSelect value={tweaks.fontFamily} onChange={e => setTweak('fontFamily', e.target.value)} style={{ width: 180 }} options={[
+            ...(fontOptions || []).map(f => ({ value: f, label: f }))
+          ]} />
         </ConfigRow>
 
         <ConfigRow label="Densidade" hint="Espaçamento geral dos elementos">
@@ -714,11 +716,11 @@ function AbaUsuarios({ session }) {
               placeholder="email@empresa.com" />
           </Field>
           <Field label="Papel / Permissão" style={{ flex:1, minWidth:160 }}>
-            <Select value={papelNovo} onChange={e => setPapelNovo(e.target.value)}>
-              <option value="admin">Administrador</option>
-              <option value="analista">Analista</option>
-              <option value="visualizador">Visualizador</option>
-            </Select>
+            <CustomSelect value={papelNovo} onChange={e => setPapelNovo(e.target.value)} options={[
+              { value: "admin", label: "Administrador" },
+              { value: "analista", label: "Analista" },
+              { value: "visualizador", label: "Visualizador" }
+            ]} />
           </Field>
           <Btn variant="primary" onClick={convidar} disabled={loading || !emailNovo}>
             {loading ? 'Enviando...' : 'Enviar convite'}
@@ -868,15 +870,17 @@ function AbaNotificacoes({ session }) {
           {prefs.email_vencimento && (
             <div style={{ display:'flex', alignItems:'center', gap:10, paddingLeft:48 }}>
               <span style={{ fontSize:13, color:'var(--c-text-muted)' }}>Alertar com</span>
-              <Select value={prefs.email_vencimento_dias}
+              <CustomSelect value={prefs.email_vencimento_dias}
                 onChange={e => set('email_vencimento_dias', parseInt(e.target.value))}
-                style={{ width:80 }}>
-                <option value={1}>1 dia</option>
-                <option value={2}>2 dias</option>
-                <option value={3}>3 dias</option>
-                <option value={5}>5 dias</option>
-                <option value={7}>7 dias</option>
-              </Select>
+                style={{ width:80 }}
+                options={[
+                  { value: 1, label: "1 dia" },
+                  { value: 2, label: "2 dias" },
+                  { value: 3, label: "3 dias" },
+                  { value: 5, label: "5 dias" },
+                  { value: 7, label: "7 dias" }
+                ]}
+              />
               <span style={{ fontSize:13, color:'var(--c-text-muted)' }}>de antecedência</span>
             </div>
           )}
@@ -901,11 +905,13 @@ function AbaNotificacoes({ session }) {
           {prefs.email_resumo_semanal && (
             <div style={{ display:'flex', alignItems:'center', gap:10, paddingLeft:48 }}>
               <span style={{ fontSize:13, color:'var(--c-text-muted)' }}>Enviar toda</span>
-              <Select value={prefs.email_resumo_dia_semana}
+              <CustomSelect value={prefs.email_resumo_dia_semana}
                 onChange={e => set('email_resumo_dia_semana', parseInt(e.target.value))}
-                style={{ width:100 }}>
-                {DIAS_SEMANA.map((d, i) => <option key={i} value={i}>{d}</option>)}
-              </Select>
+                style={{ width:100 }}
+                options={[
+                  ...DIAS_SEMANA.map((d, i) => ({ value: i, label: d }))
+                ]}
+              />
             </div>
           )}
           <ToggleNotif
@@ -954,6 +960,30 @@ function ToggleNotif({ label, desc, checked, onChange }) {
         <div style={{ fontSize:13, fontWeight:500, color:'var(--c-text)' }}>{label}</div>
         <div style={{ fontSize:12, color:'var(--c-text-muted)', lineHeight:1.4 }}>{desc}</div>
       </div>
+    </div>
+  );
+}
+
+function AbaBackup({ data }) {
+  const toast = useToast();
+  function doExport() {
+    exportarBackup(data);
+    toast.push('Backup gerado com sucesso!');
+  }
+  return (
+    <div>
+      <AbaHeader titulo="Backup de Dados" descricao="Faça o download de todos os seus dados em um único arquivo XLSX." />
+      <Card>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ fontSize: 13, color: 'var(--c-text-muted)' }}>
+            Este arquivo contém abas separadas para: Empresas, Lançamentos, Portadores, e Centros de Custo. 
+            Mantenha este arquivo em local seguro, pois ele contém todas as informações financeiras registradas no sistema.
+          </div>
+          <div>
+            <Btn variant="primary" icon="download" onClick={doExport}>Baixar Backup (.xlsx)</Btn>
+          </div>
+        </div>
+      </Card>
     </div>
   );
 }

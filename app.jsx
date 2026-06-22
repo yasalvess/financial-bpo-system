@@ -9,7 +9,7 @@ const DEFAULT_TWEAKS = /*EDITMODE-BEGIN*/{
   "sidebarCollapsed": false
 }/*EDITMODE-END*/;
 
-const COLOR_OPTIONS = ['#2563EB', '#6366F1', '#7C3AED', '#0EA5E9', '#10B981', '#F59E0B'];
+const COLOR_OPTIONS = ['#2F5D8A','#123A63','#0B1D39','#9CC7E6','#2563EB','#6366F1'];
 const FONT_OPTIONS = ['Inter', 'Manrope', 'IBM Plex Sans', 'DM Sans', 'Sora'];
 
 function hexToRgb(hex) {
@@ -323,6 +323,13 @@ function App() {
       const novo = existe ? cur.map(x => x.id === lancNorm.id ? lancNorm : x) : [...cur, lancNorm];
       return { ...d, lancamentos: { ...d.lancamentos, [l.empresaId]: novo } };
     });
+
+    // Invoca edge function se for lançamento novo
+    if (!existe) {
+      window.supabaseClient.functions.invoke('notificacao-lancamento', {
+        body: { lancamento_id: ln.id, user_id: session.user.id }
+      }).catch(() => {});
+    }
   }
 
   async function deleteLanc(empId, lancId) {
@@ -460,6 +467,7 @@ function App() {
           {route.view === 'relatorios' && <RelatoriosConsolidados data={data} />}
           {route.view === 'configuracoes' && (
             <Configuracoes
+              data={data}
               initialTab={route.tab}
               session={session}
               perfil={perfil}
@@ -495,6 +503,7 @@ function App() {
       {(newEmpOpen || editEmp) && (
         <EmpresaWizard
           empresa={editEmp}
+          todasEmpresas={data.empresas}
           portadores={data.portadores}
           centrosCusto={data.centrosCusto}
           onClose={() => { setNewEmpOpen(false); setEditEmp(null); }}
@@ -1104,7 +1113,7 @@ function stringToColor(s) {
 }
 
 // ----- 2-step Empresa Wizard -----
-function EmpresaWizard({ empresa, portadores, centrosCusto, onClose, onSave, onDelete }) {
+function EmpresaWizard({ empresa, todasEmpresas, portadores, centrosCusto, onClose, onSave, onDelete }) {
   const [step, setStep] = useState_A(1);
   const [f, setF] = useState_A(empresa || {
     id: uid('emp'), nome: '', cnpj: '', nomeFantasia: '', segmento: '',
@@ -1120,7 +1129,17 @@ function EmpresaWizard({ empresa, portadores, centrosCusto, onClose, onSave, onD
   function validarStep1() {
     const e = {};
     const errNome = Validacao.required(f.nome, 'Razão Social');
-    const errCNPJ = f.cnpj ? Validacao.cnpj(f.cnpj) : Validacao.required(f.cnpj, 'CNPJ');
+    let errCNPJ = f.cnpj ? Validacao.cnpj(f.cnpj) : Validacao.required(f.cnpj, 'CNPJ');
+    
+    // Verificação de duplicidade de CNPJ
+    if (!errCNPJ && todasEmpresas) {
+      const cleanCNPJ = f.cnpj.replace(/\D/g, '');
+      const existe = todasEmpresas.find(emp => emp.cnpj.replace(/\D/g, '') === cleanCNPJ && emp.id !== f.id);
+      if (existe) {
+        errCNPJ = 'Este CNPJ já está cadastrado em outra empresa.';
+      }
+    }
+
     const errEmail = f.email ? Validacao.email(f.email) : null;
     if (errNome) e.nome = errNome;
     if (errCNPJ) e.cnpj = errCNPJ;

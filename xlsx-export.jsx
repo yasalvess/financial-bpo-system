@@ -156,4 +156,40 @@ function exportConsolidadoXLSX(empresas, allLancs, portadores, centros, filename
   XLSX.writeFile(wb, filename);
 }
 
-Object.assign(window, { exportEmpresaXLSX, exportConsolidadoXLSX });
+function exportarBackup(data, filename = 'Backup_Completo.xlsx') {
+  const wb = XLSX.utils.book_new();
+
+  // 1) Empresas
+  const empAoa = [['ID', 'Nome', 'Nome Fantasia', 'CNPJ', 'Segmento', 'Email', 'Telefone', 'Criada Em']];
+  data.empresas.forEach(e => {
+    empAoa.push([e.id, e.nome, e.nomeFantasia, e.cnpj, e.segmento, e.email, e.telefone, formatXlsxDate(e.criadaEm)]);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(empAoa), 'Empresas');
+
+  // 2) Lançamentos
+  const lancAoa = [['ID', 'Empresa', 'Descrição', 'Valor', 'Tipo', 'Vencimento', 'Competência', 'Pago', 'Data Pagamento', 'Comprovante']];
+  data.empresas.forEach(e => {
+    (data.lancamentos[e.id] || []).forEach(l => {
+      lancAoa.push([l.id, e.nome, l.descricao, l.valor, l.tipo, formatXlsxDate(l.vencimento), l.competencia, l.pago ? 'Sim' : 'Não', l.pagamento ? formatXlsxDate(l.pagamento.data) : '', l.pagamento?.comprovante || '']);
+    });
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(lancAoa), 'Lançamentos');
+
+  // 3) Portadores
+  const portAoa = [['ID', 'Nome', 'Conta', 'Agência', 'Instituição']];
+  data.portadores.forEach(p => {
+    portAoa.push([p.id, p.nome, p.conta || '', p.agencia || '', p.banco || '']);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(portAoa), 'Portadores');
+
+  // 4) Centros de Custo
+  const ccAoa = [['ID', 'Nome', 'Tipo']];
+  data.centrosCusto.forEach(c => {
+    ccAoa.push([c.id, c.nome, c.tipo]);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ccAoa), 'Centros de Custo');
+
+  XLSX.writeFile(wb, filename);
+}
+
+Object.assign(window, { exportEmpresaXLSX, exportConsolidadoXLSX, exportarBackup });

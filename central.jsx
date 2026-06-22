@@ -130,13 +130,13 @@ function CentralGestao({ data, onOpenEmpresa, onCreateEmpresa, onDeleteEmpresa, 
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
           <Icon name="filter" size={15} color="var(--c-text-muted)" />
           <Field label="Período">
-            <Select value={dashFiltros.periodo} onChange={e => setDashFiltros({ ...dashFiltros, periodo: e.target.value })} style={{ width: 150 }}>
-              <option value="1m">1 mês</option>
-              <option value="3m">3 meses</option>
-              <option value="6m">6 meses</option>
-              <option value="12m">12 meses</option>
-              <option value="custom">Personalizado</option>
-            </Select>
+            <CustomSelect value={dashFiltros.periodo} onChange={e => setDashFiltros({ ...dashFiltros, periodo: e.target.value })} style={{ width: 150 }} options={[
+              { value: "1m", label: "1 mês" },
+              { value: "3m", label: "3 meses" },
+              { value: "6m", label: "6 meses" },
+              { value: "12m", label: "12 meses" },
+              { value: "custom", label: "Personalizado" }
+            ]} />
           </Field>
           {dashFiltros.periodo === 'custom' && (
             <>
@@ -145,18 +145,18 @@ function CentralGestao({ data, onOpenEmpresa, onCreateEmpresa, onDeleteEmpresa, 
             </>
           )}
           <Field label="Segmento">
-            <Select value={dashFiltros.segmento} onChange={e => setDashFiltros({ ...dashFiltros, segmento: e.target.value })} style={{ width: 180 }}>
-              <option value="todos">Todos</option>
-              {segmentos.map(s => <option key={s} value={s}>{s}</option>)}
-            </Select>
+            <CustomSelect value={dashFiltros.segmento} onChange={e => setDashFiltros({ ...dashFiltros, segmento: e.target.value })} style={{ width: 180 }} options={[
+              { value: "todos", label: "Todos" },
+              ...segmentos.map(s => ({ value: s, label: s }))
+            ]} />
           </Field>
           <Field label="Status">
-            <Select value={dashFiltros.status} onChange={e => setDashFiltros({ ...dashFiltros, status: e.target.value })} style={{ width: 150 }}>
-              <option value="todos">Todos</option>
-              <option value="em-dia">Em dia</option>
-              <option value="vencendo">Vencendo</option>
-              <option value="vencido">Vencido</option>
-            </Select>
+            <CustomSelect value={dashFiltros.status} onChange={e => setDashFiltros({ ...dashFiltros, status: e.target.value })} style={{ width: 150 }} options={[
+              { value: "todos", label: "Todos" },
+              { value: "em-dia", label: "Em dia" },
+              { value: "vencendo", label: "Vencendo" },
+              { value: "vencido", label: "Vencido" }
+            ]} />
           </Field>
           {hasDashFilter && <Btn variant="ghost" size="sm" onClick={clearDashFiltros}>Limpar filtros</Btn>}
         </div>
@@ -212,12 +212,12 @@ function CentralGestao({ data, onOpenEmpresa, onCreateEmpresa, onDeleteEmpresa, 
           <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por nome ou CNPJ..."
             style={{ border: 'none', outline: 'none', fontSize: 13, padding: '8px 4px', width: 240, fontFamily: 'inherit', background: 'transparent' }} />
         </div>
-        <Select value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)} style={{ width: 160 }}>
-          <option value="todos">Todos status</option>
-          <option value="em-dia">Em dia</option>
-          <option value="vencendo">Vencendo</option>
-          <option value="vencido">Vencido</option>
-        </Select>
+        <CustomSelect value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)} style={{ width: 160 }} options={[
+          { value: "todos", label: "Todos status" },
+          { value: "em-dia", label: "Em dia" },
+          { value: "vencendo", label: "Vencendo" },
+          { value: "vencido", label: "Vencido" }
+        ]} />
         <div style={{ display: 'flex', background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 8, padding: 3 }}>
           <button onClick={() => setView('cards')} style={{
             padding: '6px 10px', border: 'none', borderRadius: 6, cursor: 'pointer',

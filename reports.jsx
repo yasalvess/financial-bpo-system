@@ -1,5 +1,5 @@
 // Lançamentos globais + Relatórios consolidados
-const { useState: useState_L, useMemo: useMemo_L } = React;
+const { useState: useState_L, useMemo: useMemo_L, useEffect: useEffect_L } = React;
 
 function LancamentosGlobais({ data, onOpenEmpresa }) {
   const [filtros, setFiltros] = useState_L({
@@ -8,6 +8,10 @@ function LancamentosGlobais({ data, onOpenEmpresa }) {
   });
   const toast = useToast();
   const hoje = todayISO();
+  const POR_PAGINA = 20;
+  const [pagina, setPagina] = useState_L(1);
+
+  useEffect_L(() => setPagina(1), [filtros]);
 
   const empMap = Object.fromEntries(data.empresas.map(e => [e.id, e]));
   const portMap = Object.fromEntries(data.portadores.map(p => [p.id, p]));
@@ -34,6 +38,10 @@ function LancamentosGlobais({ data, onOpenEmpresa }) {
     return true;
   }).sort((a, b) => b.vencimento.localeCompare(a.vencimento));
 
+  const totalFiltrados = filtrados.length;
+  const totalPaginas = Math.ceil(totalFiltrados / POR_PAGINA);
+  const paginados = filtrados.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
+
   return (
     <div style={{ padding: 28, maxWidth: 1500, margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 22 }}>
@@ -50,22 +58,30 @@ function LancamentosGlobais({ data, onOpenEmpresa }) {
       <Card padding={14} style={{ marginBottom: 14 }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr', gap: 8, alignItems: 'end' }}>
           <Field label="Buscar"><Input value={filtros.busca} onChange={e => setFiltros({ ...filtros, busca: e.target.value })} placeholder="Descrição..." /></Field>
-          <Field label="Empresa"><Select value={filtros.empresa} onChange={e => setFiltros({ ...filtros, empresa: e.target.value })}>
-            <option value="todas">Todas</option>
-            {data.empresas.map(e => <option key={e.id} value={e.id}>{e.nome}</option>)}
-          </Select></Field>
-          <Field label="Tipo"><Select value={filtros.tipo} onChange={e => setFiltros({ ...filtros, tipo: e.target.value })}>
-            <option value="todos">Todos</option><option value="entrada">Entradas</option><option value="saida">Saídas</option>
-          </Select></Field>
-          <Field label="Status"><Select value={filtros.status} onChange={e => setFiltros({ ...filtros, status: e.target.value })}>
-            <option value="todos">Todos</option><option value="pago">Pago</option><option value="em-dia">Em dia</option><option value="vencendo">Vencendo</option><option value="vencido">Vencido</option>
-          </Select></Field>
-          <Field label="Portador"><Select value={filtros.portador} onChange={e => setFiltros({ ...filtros, portador: e.target.value })}>
-            <option value="todos">Todos</option>{data.portadores.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
-          </Select></Field>
-          <Field label="Centro Custo"><Select value={filtros.centroCusto} onChange={e => setFiltros({ ...filtros, centroCusto: e.target.value })}>
-            <option value="todos">Todos</option>{data.centrosCusto.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-          </Select></Field>
+          <Field label="Empresa"><CustomSelect value={filtros.empresa} onChange={e => setFiltros({ ...filtros, empresa: e.target.value })} options={[
+            { value: "todas", label: "Todas" },
+            ...data.empresas.map(e => ({ value: e.id, label: e.nome }))
+          ]} /></Field>
+          <Field label="Tipo"><CustomSelect value={filtros.tipo} onChange={e => setFiltros({ ...filtros, tipo: e.target.value })} options={[
+            { value: "todos", label: "Todos" },
+            { value: "entrada", label: "Entradas" },
+            { value: "saida", label: "Saídas" }
+          ]} /></Field>
+          <Field label="Status"><CustomSelect value={filtros.status} onChange={e => setFiltros({ ...filtros, status: e.target.value })} options={[
+            { value: "todos", label: "Todos" },
+            { value: "pago", label: "Pago" },
+            { value: "em-dia", label: "Em dia" },
+            { value: "vencendo", label: "Vencendo" },
+            { value: "vencido", label: "Vencido" }
+          ]} /></Field>
+          <Field label="Portador"><CustomSelect value={filtros.portador} onChange={e => setFiltros({ ...filtros, portador: e.target.value })} options={[
+            { value: "todos", label: "Todos" },
+            ...data.portadores.map(p => ({ value: p.id, label: p.nome }))
+          ]} /></Field>
+          <Field label="Centro Custo"><CustomSelect value={filtros.centroCusto} onChange={e => setFiltros({ ...filtros, centroCusto: e.target.value })} options={[
+            { value: "todos", label: "Todos" },
+            ...data.centrosCusto.map(c => ({ value: c.id, label: c.nome }))
+          ]} /></Field>
           <Field label="De"><Input type="date" value={filtros.dataIni} onChange={e => setFiltros({ ...filtros, dataIni: e.target.value })} /></Field>
           <Field label="Até"><Input type="date" value={filtros.dataFim} onChange={e => setFiltros({ ...filtros, dataFim: e.target.value })} /></Field>
         </div>
@@ -94,7 +110,7 @@ function LancamentosGlobais({ data, onOpenEmpresa }) {
               </tr>
             </thead>
             <tbody>
-              {filtrados.map(l => {
+              {paginados.map((l, i) => {
                 const s = lancStatus(l, hoje);
                 return (
                   <tr key={l.id} style={{ borderBottom: '1px solid var(--c-border)', cursor: 'pointer' }} onClick={() => onOpenEmpresa(l.empresaId)}>
@@ -123,7 +139,46 @@ function LancamentosGlobais({ data, onOpenEmpresa }) {
             </tbody>
           </table>
         </div>
-        {filtrados.length === 0 && <EmptyState icon="list" title="Sem lançamentos" hint="Nenhum lançamento bate com os filtros aplicados." />}
+        {totalFiltrados === 0 && <EmptyState icon="list" title="Sem lançamentos" hint="Nenhum lançamento bate com os filtros aplicados." />}
+        
+        {totalPaginas > 1 && (
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+            padding:'12px 16px', borderTop:'1px solid var(--c-border)' }}>
+            <span style={{ fontSize:12, color:'var(--c-text-muted)' }}>
+              Mostrando {((pagina-1)*POR_PAGINA)+1}–{Math.min(pagina*POR_PAGINA, totalFiltrados)} 
+              de {totalFiltrados} lançamentos
+            </span>
+            <div style={{ display:'flex', gap:4 }}>
+              <Btn size="sm" variant="secondary"
+                disabled={pagina === 1}
+                onClick={() => setPagina(p => p - 1)}>
+                ← Anterior
+              </Btn>
+              {Array.from({ length: Math.min(5, totalPaginas) }, (_, i) => {
+                let p;
+                if (totalPaginas <= 5) p = i + 1;
+                else if (pagina <= 3) p = i + 1;
+                else if (pagina >= totalPaginas - 2) p = totalPaginas - 4 + i;
+                else p = pagina - 2 + i;
+                return (
+                  <button key={p} onClick={() => setPagina(p)} style={{
+                    width: 32, height: 32, borderRadius: 8,
+                    border: `1.5px solid ${pagina === p ? 'var(--c-primary)' : 'var(--c-border)'}`,
+                    background: pagina === p ? 'var(--c-primary)' : 'var(--c-surface)',
+                    color: pagina === p ? '#fff' : 'var(--c-text)',
+                    fontSize: 13, fontWeight: pagina === p ? 600 : 400,
+                    cursor: 'pointer', fontFamily: 'inherit'
+                  }}>{p}</button>
+                );
+              })}
+              <Btn size="sm" variant="secondary"
+                disabled={pagina === totalPaginas}
+                onClick={() => setPagina(p => p + 1)}>
+                Próxima →
+              </Btn>
+            </div>
+          </div>
+        )}
       </Card>
     </div>
   );
@@ -175,10 +230,15 @@ function RelatoriosConsolidados({ data }) {
   const [cruzamento, setCruzamento] = useState_L('portador-empresa');
   const [rankSort, setRankSort] = useState_L('saldo'); // saldo | receita | despesa | inadimplente
   const [abaRelatorio, setAbaRelatorio] = useState_L('historico');
+  const [paginaInad, setPaginaInad] = useState_L(1);
+  const POR_PAGINA_INAD = 20;
+
   const [filtros, setFiltros] = useState_L({
     empresa: 'todas', periodo: '6m', tipo: 'todos', status: 'todos',
     portador: 'todos', centroCusto: 'todos', dataIni: '', dataFim: ''
   });
+
+  useEffect_L(() => setPaginaInad(1), [filtros]);
 
   const empMap = Object.fromEntries(data.empresas.map(e => [e.id, e]));
   const portMap = Object.fromEntries(data.portadores.map(p => [p.id, p]));
@@ -267,6 +327,10 @@ function RelatoriosConsolidados({ data }) {
     const top = Object.entries(agg).sort((a, b) => b[1] - a[1])[0];
     return top ? { nome: top[0], valor: top[1] } : null;
   }, [vencidos]);
+
+  const totalInad = vencidos.length;
+  const totalPaginasInad = Math.ceil(totalInad / POR_PAGINA_INAD);
+  const vencidosPaginados = vencidos.slice((paginaInad - 1) * POR_PAGINA_INAD, paginaInad * POR_PAGINA_INAD);
 
   // Ranking de empresas (sobre lançamentos filtrados)
   const ranking = useMemo_L(() => {
@@ -369,56 +433,64 @@ function RelatoriosConsolidados({ data }) {
           <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, letterSpacing: '-0.02em' }}>Análises & Indicadores</h1>
           <div style={{ fontSize: 13, color: 'var(--c-text-muted)', marginTop: 4 }}>Fluxo projetado, formas de pagamento, inadimplência, ranking e cruzamentos</div>
         </div>
-        <Btn variant="primary" icon="download" onClick={exportAbaRelatorio}>
-          Exportar XLSX
-        </Btn>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <Btn variant="secondary" icon="download" onClick={() => {
+            const el = document.getElementById('relatorios-content');
+            if (el) imprimirPDF(el.innerHTML, 'Relatório BPO');
+          }}>
+            Exportar PDF
+          </Btn>
+          <Btn variant="primary" icon="download" onClick={exportAbaRelatorio}>
+            Exportar XLSX
+          </Btn>
+        </div>
       </div>
 
       {/* Filtros globais */}
       <Card padding={14} style={{ marginBottom: 14 }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr) auto', gap: 8, alignItems: 'end' }}>
           <Field label="Empresa">
-            <Select value={filtros.empresa} onChange={e => setFiltros({ ...filtros, empresa: e.target.value })}>
-              <option value="todas">Todas</option>
-              {data.empresas.map(e => <option key={e.id} value={e.id}>{e.nome}</option>)}
-            </Select>
+            <CustomSelect value={filtros.empresa} onChange={e => setFiltros({ ...filtros, empresa: e.target.value })} options={[
+              { value: "todas", label: "Todas" },
+              ...data.empresas.map(e => ({ value: e.id, label: e.nome }))
+            ]} />
           </Field>
           <Field label="Período">
-            <Select value={filtros.periodo} onChange={e => setFiltros({ ...filtros, periodo: e.target.value })}>
-              <option value="1m">1 mês</option>
-              <option value="3m">3 meses</option>
-              <option value="6m">6 meses</option>
-              <option value="12m">12 meses</option>
-              <option value="custom">Personalizado</option>
-            </Select>
+            <CustomSelect value={filtros.periodo} onChange={e => setFiltros({ ...filtros, periodo: e.target.value })} options={[
+              { value: "1m", label: "1 mês" },
+              { value: "3m", label: "3 meses" },
+              { value: "6m", label: "6 meses" },
+              { value: "12m", label: "12 meses" },
+              { value: "custom", label: "Personalizado" }
+            ]} />
           </Field>
           <Field label="Tipo">
-            <Select value={filtros.tipo} onChange={e => setFiltros({ ...filtros, tipo: e.target.value })}>
-              <option value="todos">Todos</option>
-              <option value="entrada">Entradas</option>
-              <option value="saida">Saídas</option>
-            </Select>
+            <CustomSelect value={filtros.tipo} onChange={e => setFiltros({ ...filtros, tipo: e.target.value })} options={[
+              { value: "todos", label: "Todos" },
+              { value: "entrada", label: "Entradas" },
+              { value: "saida", label: "Saídas" }
+            ]} />
           </Field>
           <Field label="Status">
-            <Select value={filtros.status} onChange={e => setFiltros({ ...filtros, status: e.target.value })}>
-              <option value="todos">Todos</option>
-              <option value="pago">Pago</option>
-              <option value="em-dia">Em dia</option>
-              <option value="vencendo">Vencendo</option>
-              <option value="vencido">Vencido</option>
-            </Select>
+            <CustomSelect value={filtros.status} onChange={e => setFiltros({ ...filtros, status: e.target.value })} options={[
+              { value: "todos", label: "Todos" },
+              { value: "pago", label: "Pago" },
+              { value: "em-dia", label: "Em dia" },
+              { value: "vencendo", label: "Vencendo" },
+              { value: "vencido", label: "Vencido" }
+            ]} />
           </Field>
           <Field label="Portador">
-            <Select value={filtros.portador} onChange={e => setFiltros({ ...filtros, portador: e.target.value })}>
-              <option value="todos">Todos</option>
-              {data.portadores.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
-            </Select>
+            <CustomSelect value={filtros.portador} onChange={e => setFiltros({ ...filtros, portador: e.target.value })} options={[
+              { value: "todos", label: "Todos" },
+              ...data.portadores.map(p => ({ value: p.id, label: p.nome }))
+            ]} />
           </Field>
           <Field label="Centro de Custo">
-            <Select value={filtros.centroCusto} onChange={e => setFiltros({ ...filtros, centroCusto: e.target.value })}>
-              <option value="todos">Todos</option>
-              {data.centrosCusto.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-            </Select>
+            <CustomSelect value={filtros.centroCusto} onChange={e => setFiltros({ ...filtros, centroCusto: e.target.value })} options={[
+              { value: "todos", label: "Todos" },
+              ...data.centrosCusto.map(c => ({ value: c.id, label: c.nome }))
+            ]} />
           </Field>
           {hasFilter && <Btn variant="ghost" size="sm" onClick={clearFiltros}>Limpar</Btn>}
         </div>
@@ -448,6 +520,7 @@ function RelatoriosConsolidados({ data }) {
         ))}
       </div>
 
+      <div id="relatorios-content">
       {/* Histórico */}
       {abaRelatorio === 'historico' && (
       <Card style={{ marginBottom: 14 }}>
@@ -604,7 +677,7 @@ function RelatoriosConsolidados({ data }) {
               </tr>
             </thead>
             <tbody>
-              {vencidos.map(l => (
+              {vencidosPaginados.map(l => (
                 <tr key={l.id} style={{ borderBottom: '1px solid var(--c-border)' }}>
                   <td style={td}><strong style={{ fontSize: 12 }}>{l.empresaNome}</strong></td>
                   <td style={{ ...td, maxWidth: 260 }}>{l.descricao}</td>
@@ -625,7 +698,46 @@ function RelatoriosConsolidados({ data }) {
             </tbody>
           </table>
         </div>
-        {vencidos.length === 0 && <EmptyState icon="check" title="Sem inadimplência" hint="Nenhum título vencido em aberto para os filtros aplicados." />}
+        {totalInad === 0 && <EmptyState icon="check" title="Sem inadimplência" hint="Nenhum título vencido em aberto para os filtros aplicados." />}
+        
+        {totalPaginasInad > 1 && (
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+            padding:'12px 16px', borderTop:'1px solid var(--c-border)' }}>
+            <span style={{ fontSize:12, color:'var(--c-text-muted)' }}>
+              Mostrando {((paginaInad-1)*POR_PAGINA_INAD)+1}–{Math.min(paginaInad*POR_PAGINA_INAD, totalInad)} 
+              de {totalInad} títulos
+            </span>
+            <div style={{ display:'flex', gap:4 }}>
+              <Btn size="sm" variant="secondary"
+                disabled={paginaInad === 1}
+                onClick={() => setPaginaInad(p => p - 1)}>
+                ← Anterior
+              </Btn>
+              {Array.from({ length: Math.min(5, totalPaginasInad) }, (_, i) => {
+                let p;
+                if (totalPaginasInad <= 5) p = i + 1;
+                else if (paginaInad <= 3) p = i + 1;
+                else if (paginaInad >= totalPaginasInad - 2) p = totalPaginasInad - 4 + i;
+                else p = paginaInad - 2 + i;
+                return (
+                  <button key={p} onClick={() => setPaginaInad(p)} style={{
+                    width: 32, height: 32, borderRadius: 8,
+                    border: `1.5px solid ${paginaInad === p ? 'var(--c-primary)' : 'var(--c-border)'}`,
+                    background: paginaInad === p ? 'var(--c-primary)' : 'var(--c-surface)',
+                    color: paginaInad === p ? '#fff' : 'var(--c-text)',
+                    fontSize: 13, fontWeight: paginaInad === p ? 600 : 400,
+                    cursor: 'pointer', fontFamily: 'inherit'
+                  }}>{p}</button>
+                );
+              })}
+              <Btn size="sm" variant="secondary"
+                disabled={paginaInad === totalPaginasInad}
+                onClick={() => setPaginaInad(p => p + 1)}>
+                Próxima →
+              </Btn>
+            </div>
+          </div>
+        )}
       </Card>
       )}
 
@@ -787,6 +899,7 @@ function RelatoriosConsolidados({ data }) {
       </Card>
       </>
       )}
+      </div>
     </div>
   );
 }

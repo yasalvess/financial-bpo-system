@@ -1,5 +1,5 @@
 // Workspace por Empresa - 4 abas
-const { useState: useState_W, useMemo: useMemo_W } = React;
+const { useState: useState_W, useMemo: useMemo_W, useEffect: useEffect_W } = React;
 
 function WorkspaceEmpresa({ empresa, lancamentos, portadores, centrosCusto, formasPagamento, onBack, onUpsertLanc, onDeleteLanc, onPayLanc }) {
   const [aba, setAba] = useState_W('contas');
@@ -109,8 +109,13 @@ function ContasTab({ empresa, lancamentos, portadores, centrosCusto, formasPagam
   const [novoLanc, setNovoLanc] = useState_W(null);
   const [pgto, setPgto] = useState_W(null);
   const [comprovante, setComprovante] = useState_W(null);
+  const [showImport, setShowImport] = useState_W(false);
   const toast = useToast();
   const hoje = todayISO();
+  const POR_PAGINA = 20;
+  const [pagina, setPagina] = useState_W(1);
+
+  useEffect_W(() => setPagina(1), [filtros]);
 
   const portMap = Object.fromEntries(portadores.map(p => [p.id, p]));
   const ccMap = Object.fromEntries(centrosCusto.map(c => [c.id, c]));
@@ -129,6 +134,10 @@ function ContasTab({ empresa, lancamentos, portadores, centrosCusto, formasPagam
     }
     return true;
   }).sort((a, b) => a.vencimento.localeCompare(b.vencimento));
+
+  const totalFiltrados = filtrados.length;
+  const totalPaginas = Math.ceil(totalFiltrados / POR_PAGINA);
+  const paginados = filtrados.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
 
   const totalReceber = filtrados.filter(l => l.tipo === 'entrada' && !l.pago).reduce((s, l) => s + l.valor, 0);
   const totalPagar = filtrados.filter(l => l.tipo === 'saida' && !l.pago).reduce((s, l) => s + l.valor, 0);
@@ -160,38 +169,38 @@ function ContasTab({ empresa, lancamentos, portadores, centrosCusto, formasPagam
             <Input value={filtros.busca} onChange={e => setFiltros({ ...filtros, busca: e.target.value })} placeholder="Buscar descrição..." style={{ paddingLeft: 34 }} />
           </div>
           <Field label="Tipo">
-            <Select value={filtros.tipo} onChange={e => setFiltros({ ...filtros, tipo: e.target.value })}>
-              <option value="todos">Todos</option>
-              <option value="entrada">Entradas</option>
-              <option value="saida">Saídas</option>
-            </Select>
+            <CustomSelect value={filtros.tipo} onChange={e => setFiltros({ ...filtros, tipo: e.target.value })} options={[
+              { value: "todos", label: "Todos" },
+              { value: "entrada", label: "Entradas" },
+              { value: "saida", label: "Saídas" }
+            ]} />
           </Field>
           <Field label="Status">
-            <Select value={filtros.status} onChange={e => setFiltros({ ...filtros, status: e.target.value })}>
-              <option value="todos">Todos</option>
-              <option value="pago">Pago</option>
-              <option value="em-dia">Em dia</option>
-              <option value="vencendo">Vencendo</option>
-              <option value="vencido">Vencido</option>
-            </Select>
+            <CustomSelect value={filtros.status} onChange={e => setFiltros({ ...filtros, status: e.target.value })} options={[
+              { value: "todos", label: "Todos" },
+              { value: "pago", label: "Pago" },
+              { value: "em-dia", label: "Em dia" },
+              { value: "vencendo", label: "Vencendo" },
+              { value: "vencido", label: "Vencido" }
+            ]} />
           </Field>
           <Field label="Portador">
-            <Select value={filtros.portador} onChange={e => setFiltros({ ...filtros, portador: e.target.value })}>
-              <option value="todos">Todos</option>
-              {portadores.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
-            </Select>
+            <CustomSelect value={filtros.portador} onChange={e => setFiltros({ ...filtros, portador: e.target.value })} options={[
+              { value: "todos", label: "Todos" },
+              ...portadores.map(p => ({ value: p.id, label: p.nome }))
+            ]} />
           </Field>
           <Field label="Centro de Custo">
-            <Select value={filtros.centroCusto} onChange={e => setFiltros({ ...filtros, centroCusto: e.target.value })}>
-              <option value="todos">Todos</option>
-              {centrosCusto.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-            </Select>
+            <CustomSelect value={filtros.centroCusto} onChange={e => setFiltros({ ...filtros, centroCusto: e.target.value })} options={[
+              { value: "todos", label: "Todos" },
+              ...centrosCusto.map(c => ({ value: c.id, label: c.nome }))
+            ]} />
           </Field>
           <Field label="Forma Pgto.">
-            <Select value={filtros.formaPgto} onChange={e => setFiltros({ ...filtros, formaPgto: e.target.value })}>
-              <option value="todos">Todas</option>
-              {formasPagamento.map(f => <option key={f} value={f}>{f}</option>)}
-            </Select>
+            <CustomSelect value={filtros.formaPgto} onChange={e => setFiltros({ ...filtros, formaPgto: e.target.value })} options={[
+              { value: "todos", label: "Todas" },
+              ...formasPagamento.map(f => ({ value: f.nome, label: f.nome }))
+            ]} />
           </Field>
           <Field label="Período">
             <div style={{ display: 'flex', gap: 4 }}>
@@ -201,6 +210,7 @@ function ContasTab({ empresa, lancamentos, portadores, centrosCusto, formasPagam
           </Field>
           <div style={{ display: 'flex', gap: 6 }}>
             {hasFilter && <Btn variant="ghost" size="sm" onClick={clearFilters}>Limpar</Btn>}
+            <Btn variant="secondary" icon="upload" onClick={() => setShowImport(true)}>Importar XLSX</Btn>
             <Btn variant="primary" icon="plus" onClick={() => setNovoLanc({ tipo: 'saida', vencimento: todayISO(), valor: '', descricao: '', portadorId: portadores[0]?.id, centroCustoId: centrosCusto.find(c => c.tipo === 'saida')?.id, formaPagamento: formasPagamento[0], competencia: competenciaFromDate(todayISO()) })}>Novo</Btn>
           </div>
         </div>
@@ -224,7 +234,7 @@ function ContasTab({ empresa, lancamentos, portadores, centrosCusto, formasPagam
               </tr>
             </thead>
             <tbody>
-              {filtrados.map(l => {
+              {paginados.map(l => {
                 const s = lancStatus(l, hoje);
                 const c = statusColor(s);
                 const port = portMap[l.portadorId];
@@ -277,10 +287,49 @@ function ContasTab({ empresa, lancamentos, portadores, centrosCusto, formasPagam
             </tbody>
           </table>
         </div>
-        {filtrados.length === 0 && (
+        {totalFiltrados === 0 && (
           <EmptyState icon="list" title="Nenhum lançamento encontrado" hint={hasFilter ? 'Ajuste os filtros para ver mais resultados.' : 'Cadastre o primeiro lançamento desta empresa.'} action={
             <Btn variant="primary" icon="plus" onClick={() => setNovoLanc({ tipo: 'saida', vencimento: todayISO(), valor: '' })}>Novo lançamento</Btn>
           } />
+        )}
+        
+        {totalPaginas > 1 && (
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+            padding:'12px 16px', borderTop:'1px solid var(--c-border)' }}>
+            <span style={{ fontSize:12, color:'var(--c-text-muted)' }}>
+              Mostrando {((pagina-1)*POR_PAGINA)+1}–{Math.min(pagina*POR_PAGINA, totalFiltrados)} 
+              de {totalFiltrados} lançamentos
+            </span>
+            <div style={{ display:'flex', gap:4 }}>
+              <Btn size="sm" variant="secondary"
+                disabled={pagina === 1}
+                onClick={() => setPagina(p => p - 1)}>
+                ← Anterior
+              </Btn>
+              {Array.from({ length: Math.min(5, totalPaginas) }, (_, i) => {
+                let p;
+                if (totalPaginas <= 5) p = i + 1;
+                else if (pagina <= 3) p = i + 1;
+                else if (pagina >= totalPaginas - 2) p = totalPaginas - 4 + i;
+                else p = pagina - 2 + i;
+                return (
+                  <button key={p} onClick={() => setPagina(p)} style={{
+                    width: 32, height: 32, borderRadius: 8,
+                    border: `1.5px solid ${pagina === p ? 'var(--c-primary)' : 'var(--c-border)'}`,
+                    background: pagina === p ? 'var(--c-primary)' : 'var(--c-surface)',
+                    color: pagina === p ? '#fff' : 'var(--c-text)',
+                    fontSize: 13, fontWeight: pagina === p ? 600 : 400,
+                    cursor: 'pointer', fontFamily: 'inherit'
+                  }}>{p}</button>
+                );
+              })}
+              <Btn size="sm" variant="secondary"
+                disabled={pagina === totalPaginas}
+                onClick={() => setPagina(p => p + 1)}>
+                Próxima →
+              </Btn>
+            </div>
+          </div>
         )}
       </Card>
 
@@ -313,6 +362,20 @@ function ContasTab({ empresa, lancamentos, portadores, centrosCusto, formasPagam
       )}
       {comprovante && (
         <ComprovanteModal lanc={comprovante} empresa={empresa} portador={portMap[comprovante.portadorId]} centro={ccMap[comprovante.centroCustoId]} onClose={() => setComprovante(null)} />
+      )}
+      {showImport && (
+        <ModalImportarXLSX 
+          portadores={portadores}
+          centrosCusto={centrosCusto}
+          onClose={() => setShowImport(false)}
+          onImport={(lancsArray) => {
+            lancsArray.forEach(l => {
+              onUpsertLanc({ ...l, empresaId: empresa.id });
+            });
+            toast.push(`${lancsArray.length} lançamentos importados`);
+            setShowImport(false);
+          }}
+        />
       )}
     </div>
   );
@@ -387,19 +450,19 @@ function LancamentoFormModal({ lanc, portadores, centrosCusto, formasPagamento, 
           <Input type="date" value={f.vencimento} onChange={e => { set('vencimento', e.target.value); set('competencia', competenciaFromDate(e.target.value)); }} />
         </Field>
         <Field label="Centro de Custo" required>
-          <Select value={f.centroCustoId} onChange={e => set('centroCustoId', e.target.value)}>
-            {ccsFiltrados.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-          </Select>
+          <CustomSelect value={f.centroCustoId} onChange={e => set('centroCustoId', e.target.value)} options={[
+            ...ccsFiltrados.map(c => ({ value: c.id, label: c.nome }))
+          ]} />
         </Field>
         <Field label="Portador" required hint="Onde o valor entrará ou de onde sairá">
-          <Select value={f.portadorId} onChange={e => set('portadorId', e.target.value)}>
-            {portadores.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
-          </Select>
+          <CustomSelect value={f.portadorId} onChange={e => set('portadorId', e.target.value)} options={[
+            ...portadores.map(p => ({ value: p.id, label: p.nome }))
+          ]} />
         </Field>
         <Field label="Forma de Pagamento" required>
-          <Select value={f.formaPagamento} onChange={e => set('formaPagamento', e.target.value)}>
-            {formasPagamento.map(f => <option key={f} value={f}>{f}</option>)}
-          </Select>
+          <CustomSelect value={f.formaPagamento} onChange={e => set('formaPagamento', e.target.value)} options={[
+            ...formasPagamento.map(f => ({ value: f, label: f }))
+          ]} />
         </Field>
         <Field label="Competência" hint="Mês contábil deste lançamento">
           <Input value={f.competencia} onChange={e => set('competencia', e.target.value)} placeholder="MM/AAAA" />
@@ -439,9 +502,9 @@ function PagamentoModal({ lanc, portadores, centrosCusto, onClose, onConfirm }) 
           <Input type="date" value={data} onChange={e => setData(e.target.value)} />
         </Field>
         <Field label={isEntrada ? 'Caiu em' : 'Sai de'} required hint="Banco / caixa / cofre">
-          <Select value={portadorId} onChange={e => setPortadorId(e.target.value)}>
-            {portadores.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
-          </Select>
+          <CustomSelect value={portadorId} onChange={e => setPortadorId(e.target.value)} options={[
+            ...portadores.map(p => ({ value: p.id, label: p.nome }))
+          ]} />
         </Field>
       </div>
       <div style={{ marginTop: 16, padding: 12, background: 'var(--c-blue-bg)', border: '1px solid rgba(37, 99, 235, 0.3)', borderRadius: 8, fontSize: 12, color: 'var(--c-blue-fg)', display: 'flex', gap: 8 }}>
@@ -454,9 +517,31 @@ function PagamentoModal({ lanc, portadores, centrosCusto, onClose, onConfirm }) 
 
 // ----- Comprovante -----
 function ComprovanteModal({ lanc, empresa, portador, centro, onClose }) {
+  const handlePrint = () => {
+    const html = `
+      <div class="comprovante-wrapper">
+        <div class="header">
+          <div class="title">COMPROVANTE DE ${lanc.tipo === 'entrada' ? 'RECEBIMENTO' : 'PAGAMENTO'}</div>
+          <div class="value">${formatBRL(lanc.valor)}</div>
+        </div>
+        <div class="row"><span class="label">Empresa</span><span class="val">${empresa.nome}</span></div>
+        <div class="row"><span class="label">CNPJ</span><span class="val">${empresa.cnpj}</span></div>
+        <div class="row"><span class="label">Descrição</span><span class="val">${lanc.descricao}</span></div>
+        <div class="row"><span class="label">Centro de Custo</span><span class="val">${centro?.nome || ''}</span></div>
+        <div class="row"><span class="label">Portador</span><span class="val">${portador?.nome || ''}</span></div>
+        <div class="row"><span class="label">Forma de Pagamento</span><span class="val">${lanc.formaPagamento || ''}</span></div>
+        <div class="row"><span class="label">Vencimento</span><span class="val">${formatDate(lanc.vencimento)}</span></div>
+        ${lanc.pagamento ? `<div class="row"><span class="label">Data do Pagamento</span><span class="val">${formatDate(lanc.pagamento.data)}</span></div>` : ''}
+        <div class="row"><span class="label">Competência</span><span class="val">${lanc.competencia || ''}</span></div>
+        ${lanc.pagamento?.comprovante ? `<div class="row"><span class="label">Nº Comprovante</span><span class="val mono">${lanc.pagamento.comprovante}</span></div>` : ''}
+      </div>
+    `;
+    imprimirPDF(html, 'Comprovante - ' + lanc.descricao);
+  };
+
   return (
     <Modal open onClose={onClose} title="Comprovante" width={480}
-      footer={<Btn variant="primary" onClick={() => window.print()}>Imprimir</Btn>}>
+      footer={<Btn variant="primary" onClick={handlePrint}>Imprimir Comprovante</Btn>}>
       <div style={{ border: '2px dashed var(--c-border)', borderRadius: 10, padding: 24, background: 'var(--c-bg)' }}>
         <div style={{ textAlign: 'center', marginBottom: 16 }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 44, height: 44, borderRadius: 99, background: 'var(--c-green-bg)', color: 'var(--c-green-fg)', marginBottom: 10 }}>
@@ -762,4 +847,90 @@ function RelatorioTab({ empresa, lancamentos, portadores, centrosCusto, formasPa
   );
 }
 
-Object.assign(window, { WorkspaceEmpresa });
+function ModalImportarXLSX({ portadores, centrosCusto, onClose, onImport }) {
+  const [step, setStep] = useState_W(1);
+  const [dataRows, setDataRows] = useState_W([]);
+  const [colNames, setColNames] = useState_W([]);
+  const [map, setMap] = useState_W({ data: '', descricao: '', valor: '', tipo: '' });
+
+  function handleFile(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const bstr = evt.target.result;
+      const wb = XLSX.read(bstr, { type: 'binary' });
+      const wsname = wb.SheetNames[0];
+      const ws = wb.Sheets[wsname];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+      if (rows.length > 0) {
+        setColNames(rows[0] || []);
+        setDataRows(rows.slice(1).filter(r => r.length > 0));
+        setStep(2);
+      }
+    };
+    reader.readAsBinaryString(file);
+  }
+
+  function doImport() {
+    const idx = {
+      data: colNames.indexOf(map.data),
+      descricao: colNames.indexOf(map.descricao),
+      valor: colNames.indexOf(map.valor),
+      tipo: colNames.indexOf(map.tipo)
+    };
+    const lancs = dataRows.map(r => {
+      let v = r[idx.valor] || 0;
+      if (typeof v === 'string') v = parseFloat(v.replace(/[R$\s.]/g, '').replace(',','.')) || 0;
+      let dt = r[idx.data];
+      if (typeof dt === 'number') dt = new Date((dt - 25569) * 86400 * 1000).toISOString().split('T')[0];
+      else if (typeof dt === 'string' && dt.includes('/')) {
+        const p = dt.split('/'); dt = `${p[2]}-${p[1]}-${p[0]}`;
+      } else { dt = todayISO(); }
+      
+      const tStr = String(r[idx.tipo]).toLowerCase();
+      const isEntrada = tStr.includes('entrada') || tStr.includes('receita') || tStr === 'c';
+      
+      return {
+        descricao: String(r[idx.descricao] || 'Importado').slice(0, 80),
+        valor: Math.abs(v),
+        tipo: isEntrada ? 'entrada' : 'saida',
+        vencimento: dt,
+        competencia: competenciaFromDate(dt),
+        portadorId: portadores[0]?.id,
+        centroCustoId: centrosCusto.find(c => c.tipo === (isEntrada ? 'entrada' : 'saida'))?.id || centrosCusto[0]?.id,
+        formaPagamento: 'Transferência',
+        pago: false
+      };
+    });
+    onImport(lancs);
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Importar Planilha (XLSX/CSV)" width={500} footer={
+      <>
+        <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
+        {step === 2 && <Btn variant="primary" onClick={doImport}>Confirmar Importação ({dataRows.length} linhas)</Btn>}
+      </>
+    }>
+      {step === 1 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'center', padding: '20px 0' }}>
+          <Icon name="upload" size={32} color="var(--c-text-muted)" />
+          <div style={{ fontSize: 14, color: 'var(--c-text-muted)', textAlign: 'center' }}>Selecione um arquivo Excel ou CSV contendo as colunas de data, descrição e valor.</div>
+          <input type="file" accept=".xlsx,.xls,.csv" onChange={handleFile} style={{ marginTop: 10 }} />
+        </div>
+      )}
+      {step === 2 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ fontSize: 13, color: 'var(--c-text-muted)' }}>Mapeie as colunas da sua planilha para os campos do sistema:</div>
+          <Field label="Coluna de Data"><CustomSelect value={map.data} onChange={e => setMap({...map, data: e.target.value})} options={[{value:'',label:'Selecione...'}, ...colNames.map(c => ({value:c,label:c}))]} /></Field>
+          <Field label="Coluna de Descrição"><CustomSelect value={map.descricao} onChange={e => setMap({...map, descricao: e.target.value})} options={[{value:'',label:'Selecione...'}, ...colNames.map(c => ({value:c,label:c}))]} /></Field>
+          <Field label="Coluna de Valor"><CustomSelect value={map.valor} onChange={e => setMap({...map, valor: e.target.value})} options={[{value:'',label:'Selecione...'}, ...colNames.map(c => ({value:c,label:c}))]} /></Field>
+          <Field label="Coluna de Tipo (Entrada/Saída)"><CustomSelect value={map.tipo} onChange={e => setMap({...map, tipo: e.target.value})} options={[{value:'',label:'Selecione...'}, ...colNames.map(c => ({value:c,label:c}))]} /></Field>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+Object.assign(window, { WorkspaceEmpresa, ModalImportarXLSX });

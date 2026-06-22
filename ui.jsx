@@ -187,8 +187,125 @@ const inputStyle = {
 function Input(props) {
   return <input {...props} style={{ ...inputStyle, ...(props.style || {}) }} />;
 }
-function Select({ children, ...props }) {
-  return <select {...props} style={{ ...inputStyle, ...(props.style || {}), appearance: 'none', backgroundImage: 'url("data:image/svg+xml;utf8,<svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"%2364748b\\" stroke-width=\\"2\\"><polyline points=\\"6 9 12 15 18 9\\"/></svg>")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center', backgroundSize: 16, paddingRight: 30 }}>{children}</select>;
+function CustomSelect({ value, onChange, options, placeholder = 'Selecionar', style = {}, disabled = false, size = 'md' }) {
+  const { useState, useEffect, useRef } = React;
+  const opts = options.map(o => typeof o === 'string' ? { value: o, label: o } : o);
+
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const selected = opts.find(o => o.value === value);
+
+  const heights = { sm: 32, md: 38, lg: 44 };
+  const fontSizes = { sm: 12, md: 13, lg: 14 };
+
+  useEffect(() => {
+    function onClick(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, []);
+
+  function select(val) {
+    if (onChange) onChange({ target: { value: val } });
+    setOpen(false);
+  }
+
+  return (
+    <div ref={ref} style={{ position: 'relative', ...style }}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => !disabled && setOpen(o => !o)}
+        style={{
+          width: '100%',
+          height: heights[size],
+          padding: '0 34px 0 12px',
+          background: open ? 'var(--c-surface)' : 'var(--c-surface)',
+          border: `1.5px solid ${open ? 'var(--c-primary)' : 'var(--c-border)'}`,
+          borderRadius: 8,
+          display: 'flex', alignItems: 'center',
+          fontSize: fontSizes[size],
+          color: selected ? 'var(--c-text)' : 'var(--c-text-muted)',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          opacity: disabled ? 0.5 : 1,
+          fontFamily: 'inherit',
+          boxShadow: open ? `0 0 0 3px var(--c-primary-soft)` : 'none',
+          transition: 'border-color 0.15s, box-shadow 0.15s',
+          position: 'relative',
+          textAlign: 'left',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}
+      >
+        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {selected?.label || placeholder}
+        </span>
+        <span style={{
+          position: 'absolute', right: 10, top: '50%',
+          transform: `translateY(-50%) rotate(${open ? '180deg' : '0deg'})`,
+          transition: 'transform 0.2s', color: 'var(--c-text-muted)',
+          display: 'flex', pointerEvents: 'none'
+        }}>
+          <Icon name="chevronDown" size={14} />
+        </span>
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute',
+          top: 'calc(100% + 4px)',
+          left: 0, right: 0,
+          background: 'var(--c-surface)',
+          border: '1.5px solid var(--c-primary)',
+          borderRadius: 10,
+          boxShadow: '0 8px 24px rgba(11,29,57,0.14)',
+          zIndex: 500,
+          overflow: 'hidden',
+          animation: 'dropIn 0.12s cubic-bezier(.16,1,.3,1)',
+          maxHeight: 260,
+          overflowY: 'auto',
+        }}>
+          {opts.map((o, i) => (
+            <button
+              key={o.value}
+              type="button"
+              onClick={() => select(o.value)}
+              style={{
+                width: '100%',
+                padding: '9px 14px',
+                background: o.value === value ? 'var(--c-primary-soft)' : 'transparent',
+                border: 'none',
+                borderBottom: i < opts.length - 1 ? '1px solid var(--c-border)' : 'none',
+                textAlign: 'left',
+                fontSize: fontSizes[size],
+                fontFamily: 'inherit',
+                color: o.value === value ? 'var(--c-primary)' : 'var(--c-text)',
+                fontWeight: o.value === value ? 600 : 400,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                transition: 'background 0.1s',
+              }}
+              onMouseEnter={e => {
+                if (o.value !== value) e.currentTarget.style.background = 'var(--c-bg)'
+              }}
+              onMouseLeave={e => {
+                if (o.value !== value) e.currentTarget.style.background = 'transparent'
+              }}
+            >
+              {o.label}
+              {o.value === value && (
+                <Icon name="check" size={13} color="var(--c-primary)" />
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 function Textarea(props) {
   return <textarea {...props} style={{ ...inputStyle, minHeight: 80, resize: 'vertical', fontFamily: 'inherit', ...(props.style || {}) }} />;
@@ -452,4 +569,42 @@ function LoadingSpinner({ size = 24, color = 'var(--c-primary)' }) {
   );
 }
 
-Object.assign(window, { Icon, Btn, Badge, Card, KPI, Modal, Field, Input, Select, Textarea, BarChart, DonutChart, LineChart, Legend, EmptyState, ToastProvider, useToast, useIsMobile, Validacao, maskCNPJ, maskTelefone, maskCEP, maskMoeda, ModalConfirmacao, LoadingSpinner });
+function imprimirPDF(htmlStr, title = 'Documento') {
+  const win = window.open('', '_blank');
+  win.document.write(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>${title}</title>
+        <style>
+          body { font-family: 'Inter', system-ui, sans-serif; color: #0f172a; margin: 0; padding: 20px; }
+          * { box-sizing: border-box; }
+          .comprovante-wrapper { max-width: 600px; margin: 0 auto; border: 2px dashed #cbd5e1; padding: 32px; border-radius: 12px; }
+          .header { text-align: center; margin-bottom: 24px; }
+          .title { font-size: 14px; font-weight: 700; color: #64748b; letter-spacing: 0.1em; margin-bottom: 12px; text-transform: uppercase; }
+          .value { font-size: 32px; font-weight: 800; font-variant-numeric: tabular-nums; }
+          .row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #e2e8f0; font-size: 14px; }
+          .row:last-child { border-bottom: none; }
+          .label { color: #64748b; }
+          .val { font-weight: 600; text-align: right; }
+          .mono { font-family: ui-monospace, monospace; }
+          
+          @media print {
+            body { padding: 0; }
+            .comprovante-wrapper { border: none; padding: 0; max-width: none; }
+          }
+        </style>
+      </head>
+      <body>${htmlStr}</body>
+      <script>
+        setTimeout(() => {
+          window.print();
+          window.onafterprint = () => window.close();
+        }, 300);
+      </script>
+    </html>
+  `);
+  win.document.close();
+}
+
+Object.assign(window, { Icon, Btn, Badge, Card, KPI, Modal, Field, Input, CustomSelect, Textarea, BarChart, DonutChart, LineChart, Legend, EmptyState, ToastProvider, useToast, useIsMobile, Validacao, maskCNPJ, maskTelefone, maskCEP, maskMoeda, ModalConfirmacao, LoadingSpinner, imprimirPDF });

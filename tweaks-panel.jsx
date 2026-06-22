@@ -431,13 +431,12 @@ function TweakRadio({ label, value, options, onChange }) {
 function TweakSelect({ label, value, options, onChange }) {
   return (
     <TweakRow label={label}>
-      <select className="twk-field" value={value} onChange={(e) => onChange(e.target.value)}>
-        {options.map((o) => {
-          const v = typeof o === 'object' ? o.value : o;
-          const l = typeof o === 'object' ? o.label : o;
-          return <option key={v} value={v}>{l}</option>;
-        })}
-      </select>
+      <CustomSelect value={value} onChange={(e) => onChange(e.target.value)} options={[
+        ...options.map((o) => ({
+          value: typeof o === 'object' ? o.value : o,
+          label: typeof o === 'object' ? o.label : o
+        }))
+      ]} />
     </TweakRow>
   );
 }
