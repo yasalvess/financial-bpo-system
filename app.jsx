@@ -15,6 +15,8 @@ const FONT_OPTIONS = ['Inter', 'Manrope', 'IBM Plex Sans', 'DM Sans', 'Sora'];
 function hexToRgb(hex) {
   const m = hex.replace('#', '');
   return [parseInt(m.slice(0, 2), 16), parseInt(m.slice(2, 4), 16), parseInt(m.slice(4, 6), 16)];
+}
+
 function App() {
   const toast = useToast();
   const [session, setSession] = useState_A(null);
