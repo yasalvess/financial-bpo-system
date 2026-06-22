@@ -13,7 +13,7 @@ const ABAS_CONFIG = [
   { id: 'perfil', label: 'Meu Perfil', icon: 'user' },
   { id: 'empresa', label: 'Minha Empresa', icon: 'building' },
   { id: 'seguranca', label: 'Segurança', icon: 'lock' },
-  { id: 'usuarios', label: 'Usuários & Acesso', icon: 'users' },
+  // { id: 'usuarios', label: 'Usuários & Acesso', icon: 'users' }, // Removido p/ v2 (Multi-usuário não suportado na v1)
   { id: 'portadores', label: 'Portadores', icon: 'bank' },
   { id: 'centros', label: 'Centros de Custo', icon: 'target' },
   { id: 'formas', label: 'Formas de Pagamento', icon: 'creditCard' },
