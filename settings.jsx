@@ -12,17 +12,22 @@ function readFileAsDataURL(file, cb) {
 const ABAS_CONFIG = [
   { id: 'perfil', label: 'Meu Perfil', icon: 'user' },
   { id: 'empresa', label: 'Minha Empresa', icon: 'building' },
+  { id: 'seguranca', label: 'Segurança', icon: 'lock' },
+  { id: 'usuarios', label: 'Usuários & Acesso', icon: 'users' },
   { id: 'portadores', label: 'Portadores', icon: 'bank' },
   { id: 'centros', label: 'Centros de Custo', icon: 'target' },
   { id: 'formas', label: 'Formas de Pagamento', icon: 'creditCard' },
+  { id: 'notificacoes', label: 'Notificações', icon: 'bell' },
   { id: 'aparencia', label: 'Aparência', icon: 'settings' },
 ];
 
 function Configuracoes(props) {
   const {
-    initialTab, perfil, onUpdatePerfil, empresaInfo, onUpdateEmpresaInfo,
+    initialTab, session, perfil, onUpdatePerfil, empresaInfo, onUpdateEmpresaInfo,
     portadores, centrosCusto, formasPagamento,
-    onUpdatePortadores, onUpdateCentros, onUpdateFormas,
+    onSavePortador, onDeletePortador,
+    onSaveCentro, onDeleteCentro,
+    onSaveForma, onDeleteForma,
     tweaks, setTweak, colorOptions, fontOptions,
   } = props;
   const [aba, setAba] = useState_S(initialTab || 'perfil');
@@ -67,9 +72,12 @@ function Configuracoes(props) {
         <div style={{ maxWidth: 680, margin: '0 auto' }}>
           {aba === 'perfil' && <PerfilTab perfil={perfil} onUpdate={onUpdatePerfil} />}
           {aba === 'empresa' && <EmpresaInfoTab info={empresaInfo} onUpdate={onUpdateEmpresaInfo} />}
-          {aba === 'portadores' && <PortadoresConfigTab portadores={portadores} onUpdate={onUpdatePortadores} />}
-          {aba === 'centros' && <CentrosConfigTab centros={centrosCusto} onUpdate={onUpdateCentros} />}
-          {aba === 'formas' && <FormasConfigTab formas={formasPagamento} onUpdate={onUpdateFormas} />}
+          {aba === 'seguranca' && <AbaSeguranca session={session} />}
+          {aba === 'usuarios' && <AbaUsuarios session={session} />}
+          {aba === 'portadores' && <PortadoresConfigTab portadores={portadores} onSave={onSavePortador} onDelete={onDeletePortador} />}
+          {aba === 'centros' && <CentrosConfigTab centros={centrosCusto} onSave={onSaveCentro} onDelete={onDeleteCentro} />}
+          {aba === 'formas' && <FormasConfigTab formas={formasPagamento} onSave={onSaveForma} onDelete={onDeleteForma} />}
+          {aba === 'notificacoes' && <AbaNotificacoes session={session} />}
           {aba === 'aparencia' && <AparenciaTab tweaks={tweaks} setTweak={setTweak} colorOptions={colorOptions} fontOptions={fontOptions} />}
         </div>
       </div>
@@ -207,20 +215,17 @@ const TIPOS_PORTADOR = [
 ];
 const CORES_PRESET = ['#CC092F', '#EC7000', '#0066B3', '#16a34a', '#7C3AED', '#0EA5E9', '#F59E0B', '#475569'];
 
-function PortadoresConfigTab({ portadores, onUpdate }) {
+function PortadoresConfigTab({ portadores, onSave, onDelete }) {
   const toast = useToast();
-  const [modal, setModal] = useState_S(null); // portador em edição/criação
+  const [modal, setModal] = useState_S(null);
 
-  function salvar(p) {
-    const existe = portadores.some(x => x.id === p.id);
-    onUpdate(existe ? portadores.map(x => x.id === p.id ? p : x) : [...portadores, p]);
-    toast.push(existe ? 'Portador atualizado' : 'Portador adicionado');
+  async function salvar(p) {
+    await onSave(p);
     setModal(null);
   }
-  function excluir(id) {
+  async function excluir(id) {
     if (!confirm('Excluir este portador?')) return;
-    onUpdate(portadores.filter(x => x.id !== id));
-    toast.push('Portador excluído', 'error');
+    await onDelete(id);
   }
 
   return (
@@ -283,20 +288,17 @@ function PortadorModal({ portador, onClose, onSave }) {
 }
 
 // ----- Aba 4: Centros de Custo -----
-function CentrosConfigTab({ centros, onUpdate }) {
+function CentrosConfigTab({ centros, onSave, onDelete }) {
   const toast = useToast();
   const [modal, setModal] = useState_S(null);
 
-  function salvar(c) {
-    const existe = centros.some(x => x.id === c.id);
-    onUpdate(existe ? centros.map(x => x.id === c.id ? c : x) : [...centros, c]);
-    toast.push(existe ? 'Centro atualizado' : 'Centro adicionado');
+  async function salvar(c) {
+    await onSave(c);
     setModal(null);
   }
-  function excluir(id) {
+  async function excluir(id) {
     if (!confirm('Excluir este centro de custo?')) return;
-    onUpdate(centros.filter(x => x.id !== id));
-    toast.push('Centro excluído', 'error');
+    await onDelete(id);
   }
 
   return (
@@ -350,21 +352,21 @@ function CentroModal({ centro, onClose, onSave }) {
 }
 
 // ----- Aba 5: Formas de Pagamento -----
-function FormasConfigTab({ formas, onUpdate }) {
+function FormasConfigTab({ formas, onSave, onDelete }) {
   const toast = useToast();
   const [nova, setNova] = useState_S('');
 
-  function adicionar() {
-    const v = nova.trim();
-    if (!v) return;
-    if (formas.some(f => f.toLowerCase() === v.toLowerCase())) return toast.push('Forma já cadastrada', 'error');
-    onUpdate([...formas, v]);
+  async function adicionar(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    const n = nova.trim();
+    if (!n) return;
+    if (formas.includes(n)) return toast.push('Forma de pagamento já existe', 'error');
+    await onSave(n);
     setNova('');
-    toast.push('Forma adicionada');
   }
-  function remover(f) {
-    onUpdate(formas.filter(x => x !== f));
-    toast.push('Forma removida', 'error');
+  async function excluir(f) {
+    if (!confirm(`Excluir forma de pagamento "${f}"?`)) return;
+    await onDelete(f);
   }
 
   return (
@@ -380,7 +382,7 @@ function FormasConfigTab({ formas, onUpdate }) {
             <div key={f} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', border: '1px solid var(--c-border)', borderRadius: 8 }}>
               <Icon name="creditCard" size={15} color="var(--c-text-muted)" />
               <span style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{f}</span>
-              <button onClick={() => remover(f)} style={iconBtnCfg} title="Remover"><Icon name="x" size={14} /></button>
+              <button onClick={() => excluir(f)} style={iconBtnCfg} title="Remover"><Icon name="x" size={14} /></button>
             </div>
           ))}
           {formas.length === 0 && <div style={{ padding: '12px 0', fontSize: 13, color: 'var(--c-text-muted)', textAlign: 'center' }}>Nenhuma forma cadastrada.</div>}
@@ -473,5 +475,487 @@ const iconBtnCfg = {
   width: 28, height: 28, cursor: 'pointer', color: 'var(--c-text-muted)',
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
 };
+
+// =========================================================================
+// ABA 3: SEGURANÇA
+// =========================================================================
+
+function AbaSeguranca({ session }) {
+  const [senhaAtual, setSenhaAtual] = useState_S('');
+  const [novaSenha, setNovaSenha] = useState_S('');
+  const [confirmar, setConfirmar] = useState_S('');
+  const [loading, setLoading] = useState_S(false);
+  const toast = useToast();
+
+  async function alterarSenha() {
+    if (novaSenha.length < 6) { toast.push('Senha deve ter pelo menos 6 caracteres', 'error'); return; }
+    if (novaSenha !== confirmar) { toast.push('As senhas não coincidem', 'error'); return; }
+    setLoading(true);
+    // Reautentica com senha atual primeiro
+    const { error: errReauth } = await window.supabaseClient.auth.signInWithPassword({
+      email: session.user.email,
+      password: senhaAtual
+    });
+    if (errReauth) { toast.push('Senha atual incorreta', 'error'); setLoading(false); return; }
+    // Altera senha
+    const { error } = await window.supabaseClient.auth.updateUser({ password: novaSenha });
+    if (error) { toast.push('Erro ao alterar senha', 'error'); }
+    else {
+      toast.push('Senha alterada com sucesso!');
+      setSenhaAtual(''); setNovaSenha(''); setConfirmar('');
+    }
+    setLoading(false);
+  }
+
+  async function sairTodosDispositivos() {
+    if (!confirm('Isso vai encerrar sua sessão em todos os dispositivos. Continuar?')) return;
+    await window.supabaseClient.auth.signOut({ scope: 'global' });
+  }
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:24 }}>
+      <AbaHeader titulo="Segurança" descricao="Gerencie sua senha e sessões ativas." />
+      
+      {/* Alterar senha */}
+      <SecaoConfig titulo="Alterar senha"
+        descricao="Recomendamos usar uma senha forte com letras, números e símbolos.">
+        <div style={{ display:'grid', gridTemplateColumns:'1fr', gap:12, maxWidth:480 }}>
+          <Field label="Senha atual" required>
+            <Input type="password" value={senhaAtual}
+              onChange={e => setSenhaAtual(e.target.value)} placeholder="••••••••" />
+          </Field>
+          <Field label="Nova senha" required>
+            <Input type="password" value={novaSenha}
+              onChange={e => setNovaSenha(e.target.value)} placeholder="Mínimo 6 caracteres" />
+            <IndicadorForcaSenha senha={novaSenha} />
+          </Field>
+          <Field label="Confirmar nova senha" required>
+            <Input type="password" value={confirmar}
+              onChange={e => setConfirmar(e.target.value)} placeholder="Repita a nova senha" />
+          </Field>
+          <div>
+            <Btn variant="primary" disabled={loading || !senhaAtual || !novaSenha || !confirmar}
+              onClick={alterarSenha}>
+              {loading ? 'Alterando...' : 'Alterar senha'}
+            </Btn>
+          </div>
+        </div>
+      </SecaoConfig>
+
+      {/* Informações da sessão atual */}
+      <SecaoConfig titulo="Sessão atual"
+        descricao="Informações sobre seu acesso atual ao sistema.">
+        <div style={{ background:'var(--c-bg)', borderRadius:10, padding:16,
+          border:'1px solid var(--c-border)', maxWidth:480 }}>
+          <div style={{ display:'flex', flexDirection:'column', gap:10, fontSize:13 }}>
+            <InfoLinha label="E-mail" valor={session?.user?.email} />
+            <InfoLinha label="Último acesso"
+              valor={session?.user?.last_sign_in_at
+                ? new Date(session.user.last_sign_in_at).toLocaleString('pt-BR')
+                : 'Agora'} />
+            <InfoLinha label="Provedor" valor="E-mail e senha" />
+            <InfoLinha label="ID da conta"
+              valor={session?.user?.id?.slice(0,8) + '...'} />
+          </div>
+        </div>
+      </SecaoConfig>
+
+      {/* Encerrar sessões */}
+      <SecaoConfig titulo="Encerrar todas as sessões"
+        descricao="Sai da conta em todos os dispositivos onde você está conectado. Útil se perdeu acesso a algum dispositivo.">
+        <Btn variant="danger" onClick={sairTodosDispositivos}>
+          Sair de todos os dispositivos
+        </Btn>
+      </SecaoConfig>
+
+      {/* Excluir conta */}
+      <SecaoConfig titulo="Zona de perigo"
+        descricao="Ações irreversíveis. Prossiga com cuidado.">
+        <div style={{ border:'1px solid #fecaca', borderRadius:10, padding:16, maxWidth:480 }}>
+          <div style={{ fontSize:13, fontWeight:600, color:'#991b1b', marginBottom:4 }}>
+            Excluir minha conta
+          </div>
+          <div style={{ fontSize:12, color:'var(--c-text-muted)', marginBottom:12, lineHeight:1.5 }}>
+            Remove permanentemente sua conta e todos os dados associados (empresas, lançamentos, configurações). Esta ação não pode ser desfeita.
+          </div>
+          <Btn variant="danger" onClick={() => {
+            if (prompt('Digite "EXCLUIR" para confirmar:') === 'EXCLUIR') {
+              window.supabaseClient.auth.signOut();
+              toast.push('Solicitação enviada. Conta será excluída em até 24h.', 'error');
+            }
+          }}>
+            Excluir minha conta
+          </Btn>
+        </div>
+      </SecaoConfig>
+    </div>
+  );
+}
+
+// Componente indicador de força de senha
+function IndicadorForcaSenha({ senha }) {
+  if (!senha) return null;
+  const forca = calcularForcaSenha(senha);
+  const cores = { fraca:'#dc2626', media:'#f59e0b', forte:'#16a34a', 'muito forte':'#0ea5e9' };
+  const larguras = { fraca:'25%', media:'50%', forte:'75%', 'muito forte':'100%' };
+  return (
+    <div style={{ marginTop:4 }}>
+      <div style={{ height:3, background:'var(--c-border)', borderRadius:99, overflow:'hidden' }}>
+        <div style={{ height:'100%', width:larguras[forca], background:cores[forca],
+          borderRadius:99, transition:'all 0.3s' }} />
+      </div>
+      <div style={{ fontSize:11, color:cores[forca], marginTop:3, fontWeight:500 }}>
+        Senha {forca}
+      </div>
+    </div>
+  );
+}
+
+function calcularForcaSenha(senha) {
+  let pontos = 0;
+  if (senha.length >= 8) pontos++;
+  if (senha.length >= 12) pontos++;
+  if (/[A-Z]/.test(senha)) pontos++;
+  if (/[0-9]/.test(senha)) pontos++;
+  if (/[^A-Za-z0-9]/.test(senha)) pontos++;
+  if (pontos <= 1) return 'fraca';
+  if (pontos <= 2) return 'media';
+  if (pontos <= 3) return 'forte';
+  return 'muito forte';
+}
+
+function SecaoConfig({ titulo, descricao, children }) {
+  return (
+    <div style={{ paddingBottom:24, borderBottom:'1px solid var(--c-border)' }}>
+      <div style={{ marginBottom:16 }}>
+        <div style={{ fontSize:15, fontWeight:600, marginBottom:4 }}>{titulo}</div>
+        {descricao && <div style={{ fontSize:13, color:'var(--c-text-muted)', lineHeight:1.5 }}>{descricao}</div>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function InfoLinha({ label, valor }) {
+  return (
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+      <span style={{ color:'var(--c-text-muted)' }}>{label}</span>
+      <span style={{ fontWeight:500 }}>{valor || '—'}</span>
+    </div>
+  );
+}
+
+
+// =========================================================================
+// ABA 4: USUÁRIOS
+// =========================================================================
+
+function AbaUsuarios({ session }) {
+  const [convites, setConvites] = useState_S([]);
+  const [emailNovo, setEmailNovo] = useState_S('');
+  const [papelNovo, setPapelNovo] = useState_S('analista');
+  const [loading, setLoading] = useState_S(false);
+  const toast = useToast();
+
+  const PAPEIS = [
+    { value:'admin', label:'Administrador',
+      desc:'Acesso total — pode criar/excluir empresas, lançamentos e usuários' },
+    { value:'analista', label:'Analista',
+      desc:'Pode criar e editar lançamentos, mas não excluir empresas' },
+    { value:'visualizador', label:'Visualizador',
+      desc:'Apenas visualiza dados e relatórios, sem editar nada' },
+  ];
+
+  useEffect_S(() => { carregarConvites(); }, []);
+
+  async function carregarConvites() {
+    const { data } = await window.supabaseClient.from('convites')
+      .select('*').eq('user_id', session.user.id).order('created_at', { ascending: false });
+    setConvites(data || []);
+  }
+
+  async function convidar() {
+    if (!emailNovo || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailNovo)) {
+      toast.push('E-mail inválido', 'error'); return;
+    }
+    setLoading(true);
+    const { error } = await window.supabaseClient.from('convites').insert({
+      user_id: session.user.id,
+      email_convidado: emailNovo.toLowerCase().trim(),
+      papel: papelNovo
+    });
+    if (error) { toast.push('Erro ao enviar convite', 'error'); }
+    else {
+      toast.push(`Convite enviado para ${emailNovo}`);
+      setEmailNovo('');
+      carregarConvites();
+    }
+    setLoading(false);
+  }
+
+  async function revogarConvite(id) {
+    if (!confirm('Revogar este acesso?')) return;
+    await window.supabaseClient.from('convites').update({ status:'revogado' }).eq('id', id);
+    carregarConvites();
+    toast.push('Acesso revogado');
+  }
+
+  const corPapel = { admin:'#7c3aed', analista:'var(--c-primary)', visualizador:'#64748b' };
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:24 }}>
+      <AbaHeader titulo="Usuários e Acessos" descricao="Gerencie quem tem acesso ao sistema." />
+
+      <SecaoConfig titulo="Convidar usuário"
+        descricao="Envie um convite por e-mail para dar acesso ao sistema.">
+        <div style={{ display:'flex', gap:10, alignItems:'flex-end', flexWrap:'wrap', maxWidth:600 }}>
+          <Field label="E-mail do convidado" style={{ flex:2, minWidth:220 }}>
+            <Input type="email" value={emailNovo} onChange={e => setEmailNovo(e.target.value)}
+              placeholder="email@empresa.com" />
+          </Field>
+          <Field label="Papel / Permissão" style={{ flex:1, minWidth:160 }}>
+            <Select value={papelNovo} onChange={e => setPapelNovo(e.target.value)}>
+              <option value="admin">Administrador</option>
+              <option value="analista">Analista</option>
+              <option value="visualizador">Visualizador</option>
+            </Select>
+          </Field>
+          <Btn variant="primary" onClick={convidar} disabled={loading || !emailNovo}>
+            {loading ? 'Enviando...' : 'Enviar convite'}
+          </Btn>
+        </div>
+
+        {/* Descrição dos papéis */}
+        <div style={{ display:'flex', flexDirection:'column', gap:6, marginTop:14, maxWidth:600 }}>
+          {PAPEIS.map(p => (
+            <div key={p.value} style={{ display:'flex', gap:10, alignItems:'flex-start',
+              padding:'8px 12px', borderRadius:8, background:'var(--c-bg)',
+              border:`1px solid ${papelNovo===p.value ? corPapel[p.value] : 'var(--c-border)'}`,
+              cursor:'pointer', transition:'all 0.15s' }}
+              onClick={() => setPapelNovo(p.value)}
+            >
+              <input type="radio" checked={papelNovo===p.value} readOnly
+                style={{ marginTop:2, accentColor:corPapel[p.value] }} />
+              <div>
+                <div style={{ fontSize:13, fontWeight:600,
+                  color: papelNovo===p.value ? corPapel[p.value] : 'var(--c-text)' }}>
+                  {p.label}
+                </div>
+                <div style={{ fontSize:12, color:'var(--c-text-muted)' }}>{p.desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </SecaoConfig>
+
+      {/* Lista de convites */}
+      <SecaoConfig titulo="Usuários com acesso"
+        descricao={`${convites.filter(c=>c.status!=='revogado').length} usuário(s) convidado(s)`}>
+        {convites.length === 0 ? (
+          <EmptyState icon="building" title="Nenhum convite enviado"
+            hint="Convide colaboradores para acessar o sistema." />
+        ) : (
+          <div style={{ display:'flex', flexDirection:'column', gap:8, maxWidth:600 }}>
+            {convites.map(c => (
+              <div key={c.id} style={{ display:'flex', alignItems:'center', gap:12,
+                padding:'10px 14px', borderRadius:10, background:'var(--c-bg)',
+                border:'1px solid var(--c-border)', opacity: c.status==='revogado' ? 0.5 : 1 }}>
+                <div style={{ width:36, height:36, borderRadius:99,
+                  background: corPapel[c.papel] + '20', color: corPapel[c.papel],
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                  fontWeight:700, fontSize:14, flexShrink:0 }}>
+                  {c.email_convidado.charAt(0).toUpperCase()}
+                </div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:13, fontWeight:500, overflow:'hidden',
+                    textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                    {c.email_convidado}
+                  </div>
+                  <div style={{ display:'flex', gap:8, alignItems:'center', marginTop:2 }}>
+                    <span style={{ fontSize:11, fontWeight:600,
+                      color: corPapel[c.papel] }}>
+                      {PAPEIS.find(p=>p.value===c.papel)?.label}
+                    </span>
+                    <span style={{ fontSize:11, color:'var(--c-text-muted)' }}>·</span>
+                    <span style={{ fontSize:11, color:
+                      c.status==='aceito' ? '#16a34a' :
+                      c.status==='revogado' ? '#dc2626' : '#f59e0b', fontWeight:500 }}>
+                      {c.status==='aceito' ? '● Ativo' :
+                       c.status==='revogado' ? '● Revogado' : '● Pendente'}
+                    </span>
+                    <span style={{ fontSize:11, color:'var(--c-text-muted)' }}>·</span>
+                    <span style={{ fontSize:11, color:'var(--c-text-muted)' }}>
+                      {new Date(c.created_at).toLocaleDateString('pt-BR')}
+                    </span>
+                  </div>
+                </div>
+                {c.status !== 'revogado' && (
+                  <button onClick={() => revogarConvite(c.id)}
+                    style={{ background:'none', border:'1px solid var(--c-border)',
+                      borderRadius:6, padding:'4px 10px', cursor:'pointer',
+                      fontSize:12, color:'var(--c-text-muted)', fontFamily:'inherit' }}>
+                    Revogar
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </SecaoConfig>
+    </div>
+  );
+}
+
+
+// =========================================================================
+// ABA 8: NOTIFICAÇÕES
+// =========================================================================
+
+function AbaNotificacoes({ session }) {
+  const [prefs, setPrefs] = useState_S({
+    email_vencimento: true,
+    email_vencimento_dias: 3,
+    email_resumo_semanal: true,
+    email_resumo_dia_semana: 1,
+    email_inadimplencia: true,
+    email_novo_lancamento: false,
+    email_relatorio_mensal: true,
+  });
+  const [loading, setLoading] = useState_S(false);
+  const [salvando, setSalvando] = useState_S(false);
+  const toast = useToast();
+
+  const DIAS_SEMANA = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+
+  useEffect_S(() => { carregarPrefs(); }, []);
+
+  async function carregarPrefs() {
+    setLoading(true);
+    const { data } = await window.supabaseClient
+      .from('preferencias_notificacao')
+      .select('*').eq('user_id', session.user.id).single();
+    if (data) setPrefs(data);
+    setLoading(false);
+  }
+
+  async function salvar() {
+    setSalvando(true);
+    const { error } = await window.supabaseClient
+      .from('preferencias_notificacao')
+      .upsert({ user_id: session.user.id, ...prefs }, { onConflict: 'user_id' });
+    if (error) toast.push('Erro ao salvar preferências', 'error');
+    else toast.push('Preferências de notificação salvas!');
+    setSalvando(false);
+  }
+
+  function set(k, v) { setPrefs(p => ({ ...p, [k]: v })); }
+
+  if (loading) return <div style={{ padding:24, color:'var(--c-text-muted)' }}>Carregando...</div>;
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:24 }}>
+      <AbaHeader titulo="Notificações" descricao="Gerencie seus alertas e relatórios por e-mail." />
+
+      <SecaoConfig titulo="Alertas de vencimento"
+        descricao="Receba um e-mail quando lançamentos estiverem próximos do vencimento.">
+        <div style={{ display:'flex', flexDirection:'column', gap:12, maxWidth:480 }}>
+          <ToggleNotif
+            label="Alertar vencimentos próximos"
+            desc="Envia e-mail X dias antes do vencimento de um lançamento não pago"
+            checked={prefs.email_vencimento}
+            onChange={v => set('email_vencimento', v)}
+          />
+          {prefs.email_vencimento && (
+            <div style={{ display:'flex', alignItems:'center', gap:10, paddingLeft:48 }}>
+              <span style={{ fontSize:13, color:'var(--c-text-muted)' }}>Alertar com</span>
+              <Select value={prefs.email_vencimento_dias}
+                onChange={e => set('email_vencimento_dias', parseInt(e.target.value))}
+                style={{ width:80 }}>
+                <option value={1}>1 dia</option>
+                <option value={2}>2 dias</option>
+                <option value={3}>3 dias</option>
+                <option value={5}>5 dias</option>
+                <option value={7}>7 dias</option>
+              </Select>
+              <span style={{ fontSize:13, color:'var(--c-text-muted)' }}>de antecedência</span>
+            </div>
+          )}
+          <ToggleNotif
+            label="Alertar inadimplência"
+            desc="E-mail diário listando todos os lançamentos já vencidos e não pagos"
+            checked={prefs.email_inadimplencia}
+            onChange={v => set('email_inadimplencia', v)}
+          />
+        </div>
+      </SecaoConfig>
+
+      <SecaoConfig titulo="Resumos periódicos"
+        descricao="Relatórios automáticos enviados por e-mail.">
+        <div style={{ display:'flex', flexDirection:'column', gap:12, maxWidth:480 }}>
+          <ToggleNotif
+            label="Resumo semanal"
+            desc="Relatório com entradas, saídas e saldo da semana"
+            checked={prefs.email_resumo_semanal}
+            onChange={v => set('email_resumo_semanal', v)}
+          />
+          {prefs.email_resumo_semanal && (
+            <div style={{ display:'flex', alignItems:'center', gap:10, paddingLeft:48 }}>
+              <span style={{ fontSize:13, color:'var(--c-text-muted)' }}>Enviar toda</span>
+              <Select value={prefs.email_resumo_dia_semana}
+                onChange={e => set('email_resumo_dia_semana', parseInt(e.target.value))}
+                style={{ width:100 }}>
+                {DIAS_SEMANA.map((d, i) => <option key={i} value={i}>{d}</option>)}
+              </Select>
+            </div>
+          )}
+          <ToggleNotif
+            label="Relatório mensal"
+            desc="DRE simplificado e fechamento do mês enviado no 1º dia do mês seguinte"
+            checked={prefs.email_relatorio_mensal}
+            onChange={v => set('email_relatorio_mensal', v)}
+          />
+          <ToggleNotif
+            label="Novo lançamento criado"
+            desc="Notificação a cada novo lançamento registrado (útil para equipes)"
+            checked={prefs.email_novo_lancamento}
+            onChange={v => set('email_novo_lancamento', v)}
+          />
+        </div>
+      </SecaoConfig>
+
+      <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+        <Btn variant="primary" onClick={salvar} disabled={salvando}>
+          {salvando ? 'Salvando...' : 'Salvar preferências'}
+        </Btn>
+        <span style={{ fontSize:12, color:'var(--c-text-muted)' }}>
+          Os e-mails serão enviados para {session?.user?.email}
+        </span>
+      </div>
+
+      {/* Nota */}
+      <div style={{ background:'var(--c-bg)', border:'1px solid var(--c-border)',
+        borderRadius:10, padding:'12px 16px', fontSize:12, color:'var(--c-text-muted)',
+        lineHeight:1.6, maxWidth:480, marginTop:12 }}>
+        ℹ️ As notificações por e-mail requerem configuração de um serviço de envio
+        (Resend, SendGrid ou SMTP). As preferências já são salvas e estarão prontas
+        quando o serviço for integrado.
+      </div>
+    </div>
+  );
+}
+
+function ToggleNotif({ label, desc, checked, onChange }) {
+  return (
+    <div style={{ display:'flex', alignItems:'flex-start', gap:12 }}>
+      <div style={{ flexShrink:0, marginTop:2 }}>
+        <Toggle value={checked} onChange={onChange} />
+      </div>
+      <div>
+        <div style={{ fontSize:13, fontWeight:500, color:'var(--c-text)' }}>{label}</div>
+        <div style={{ fontSize:12, color:'var(--c-text-muted)', lineHeight:1.4 }}>{desc}</div>
+      </div>
+    </div>
+  );
+}
 
 Object.assign(window, { Configuracoes });

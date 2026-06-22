@@ -1,0 +1,88 @@
+const { useState: useState_H, useEffect: useEffect_H, useCallback: useCallback_H } = React;
+
+function useAppData(userId) {
+  const [data, setData] = useState_H({
+    empresas: [], lancamentos: {},
+    portadores: [], centrosCusto: [],
+    formasPagamento: [], loading: true, error: null
+  });
+
+  const carregar = useCallback_H(async () => {
+    if (!userId) return;
+    setData(d => ({ ...d, loading: true, error: null }));
+    try {
+      const [emps, ports, centros, formas] = await Promise.all([
+        supabaseClient.from('empresas').select('*').eq('user_id', userId).eq('ativo', true).order('nome'),
+        supabaseClient.from('portadores').select('*').eq('user_id', userId).eq('ativo', true).order('nome'),
+        supabaseClient.from('centros_custo').select('*').eq('user_id', userId).eq('ativo', true).order('nome'),
+        supabaseClient.from('formas_pagamento').select('*').eq('user_id', userId).eq('ativo', true).order('ordem'),
+      ]);
+
+      const empresas = emps.data || [];
+
+      // Carrega lançamentos de todas as empresas
+      const lancMap = {};
+      if (empresas.length > 0) {
+        const empIds = empresas.map(e => e.id);
+        const { data: lancs } = await supabaseClient
+          .from('lancamentos')
+          .select('*')
+          .in('empresa_id', empIds)
+          .order('vencimento');
+        
+        empresas.forEach(e => lancMap[e.id] = []);
+        (lancs || []).forEach(l => {
+          if (lancMap[l.empresa_id]) lancMap[l.empresa_id].push(normalizelanc(l));
+        });
+      }
+
+      setData({
+        empresas: empresas.map(normalizeEmpresa),
+        lancamentos: lancMap,
+        portadores: (ports.data || []).map(normalizePortador),
+        centrosCusto: (centros.data || []).map(normalizeCentro),
+        formasPagamento: (formas.data || []).map(f => f.nome),
+        loading: false, error: null
+      });
+    } catch (err) {
+      setData(d => ({ ...d, loading: false, error: err.message }));
+    }
+  }, [userId]);
+
+  useEffect_H(() => { carregar(); }, [carregar]);
+  return { data, setData, recarregar: carregar };
+}
+
+// Normaliza snake_case do banco para camelCase do frontend
+function normalizeEmpresa(e) {
+  return {
+    id: e.id, nome: e.nome, cnpj: e.cnpj,
+    nomeFantasia: e.nome_fantasia, segmento: e.segmento,
+    responsavel: e.responsavel, email: e.email, telefone: e.telefone,
+    portadoresAtivos: e.portadores_ativos || [],
+    centrosAtivos: e.centros_ativos || [],
+    criadaEm: e.created_at
+  };
+}
+
+function normalizelanc(l) {
+  return {
+    id: l.id, empresaId: l.empresa_id, tipo: l.tipo,
+    descricao: l.descricao, valor: parseFloat(l.valor),
+    vencimento: l.vencimento, competencia: l.competencia,
+    portadorId: l.portador_id, centroCustoId: l.centro_custo_id,
+    formaPagamento: l.forma_pagamento, pago: l.pago,
+    pagamento: l.pago ? { data: l.pagamento_data, comprovante: l.pagamento_comprovante } : null,
+    observacao: l.observacao
+  };
+}
+
+function normalizePortador(p) {
+  return { id: p.id, nome: p.nome, tipo: p.tipo, cor: p.cor };
+}
+
+function normalizeCentro(c) {
+  return { id: c.id, nome: c.nome, tipo: c.tipo };
+}
+
+Object.assign(window, { useAppData });

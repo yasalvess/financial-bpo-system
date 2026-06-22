@@ -368,4 +368,88 @@ function useIsMobile(breakpoint = 768) {
   return isMobile;
 }
 
-Object.assign(window, { Icon, Btn, Badge, Card, KPI, Modal, Field, Input, Select, Textarea, BarChart, DonutChart, LineChart, Legend, EmptyState, ToastProvider, useToast, useIsMobile });
+// ----- Validadores e Máscaras -----
+const Validacao = {
+  cnpj(v) {
+    const nums = v.replace(/\D/g, '');
+    if (nums.length !== 14) return 'CNPJ deve ter 14 dígitos';
+    if (/^(\d)\1+$/.test(nums)) return 'CNPJ inválido';
+    let sum = 0, peso = 5;
+    for (let i = 0; i < 12; i++) { sum += parseInt(nums[i]) * peso; peso = peso === 2 ? 9 : peso - 1; }
+    const d1 = sum % 11 < 2 ? 0 : 11 - (sum % 11);
+    if (parseInt(nums[12]) !== d1) return 'CNPJ inválido';
+    sum = 0; peso = 6;
+    for (let i = 0; i < 13; i++) { sum += parseInt(nums[i]) * peso; peso = peso === 2 ? 9 : peso - 1; }
+    const d2 = sum % 11 < 2 ? 0 : 11 - (sum % 11);
+    if (parseInt(nums[13]) !== d2) return 'CNPJ inválido';
+    return null;
+  },
+  email(v) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? null : 'E-mail inválido';
+  },
+  required(v, label) {
+    return v?.trim() ? null : `${label} é obrigatório`;
+  },
+  valor(v) {
+    return isNaN(parseFloat(v)) || parseFloat(v) <= 0 ? 'Valor deve ser maior que zero' : null;
+  },
+  senha(v) {
+    return v.length >= 6 ? null : 'Senha deve ter pelo menos 6 caracteres';
+  }
+};
+
+function maskCNPJ(v) {
+  return v.replace(/\D/g, '').slice(0,14)
+    .replace(/^(\d{2})(\d)/, '$1.$2')
+    .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+    .replace(/\.(\d{3})(\d)/, '.$1/$2')
+    .replace(/(\d{4})(\d)/, '$1-$2');
+}
+
+function maskTelefone(v) {
+  const n = v.replace(/\D/g, '').slice(0,11);
+  if (n.length <= 10)
+    return n.replace(/^(\d{2})(\d{4})(\d{0,4})/, '($1) $2-$3');
+  return n.replace(/^(\d{2})(\d{5})(\d{0,4})/, '($1) $2-$3');
+}
+
+function maskCEP(v) {
+  return v.replace(/\D/g, '').slice(0,8).replace(/(\d{5})(\d)/, '$1-$2');
+}
+
+function maskMoeda(v) {
+  const num = v.replace(/\D/g, '');
+  return (parseInt(num || '0') / 100).toLocaleString('pt-BR', {
+    minimumFractionDigits: 2, maximumFractionDigits: 2
+  });
+}
+
+function ModalConfirmacao({ open, titulo, mensagem, labelConfirmar='Excluir', corConfirmar='#dc2626', onConfirmar, onCancelar }) {
+  return (
+    <Modal open={open} onClose={onCancelar} title={titulo} width={420}
+      footer={<>
+        <Btn variant="secondary" onClick={onCancelar}>Cancelar</Btn>
+        <Btn onClick={onConfirmar} style={{ background: corConfirmar, color:'#fff', border:`1px solid ${corConfirmar}` }}>
+          {labelConfirmar}
+        </Btn>
+      </>}>
+      <p style={{ margin:0, fontSize:14, color:'var(--c-text-muted)', lineHeight:1.6 }}>
+        {mensagem}
+      </p>
+    </Modal>
+  );
+}
+
+function LoadingSpinner({ size = 24, color = 'var(--c-primary)' }) {
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: '50%',
+      border: `2px solid ${color}40`, borderTopColor: color,
+      animation: 'spin 1s linear infinite'
+    }}>
+      <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
+
+Object.assign(window, { Icon, Btn, Badge, Card, KPI, Modal, Field, Input, Select, Textarea, BarChart, DonutChart, LineChart, Legend, EmptyState, ToastProvider, useToast, useIsMobile, Validacao, maskCNPJ, maskTelefone, maskCEP, maskMoeda, ModalConfirmacao, LoadingSpinner });

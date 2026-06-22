@@ -15,10 +15,57 @@ const FONT_OPTIONS = ['Inter', 'Manrope', 'IBM Plex Sans', 'DM Sans', 'Sora'];
 function hexToRgb(hex) {
   const m = hex.replace('#', '');
   return [parseInt(m.slice(0, 2), 16), parseInt(m.slice(2, 4), 16), parseInt(m.slice(4, 6), 16)];
-}
-
 function App() {
-  const [data, setData] = useState_A(() => buildInitialData());
+  const toast = useToast();
+  const [session, setSession] = useState_A(null);
+  const [loadingAuth, setLoadingAuth] = useState_A(true);
+  const [perfil, setPerfil] = useState_A(null);
+  const [emailConfirmado, setEmailConfirmado] = useState_A(false);
+
+  useEffect_A(() => {
+    const hash = window.location.hash;
+    if (hash.includes('access_token') || hash.includes('type=recovery')) {
+      const params = new URLSearchParams(hash.replace('#', '?'));
+      const tipo = params.get('type');
+      if (tipo === 'recovery') {
+        setRoute({ view: 'reset-senha' });
+      } else if (tipo === 'signup') {
+        window.history.replaceState({}, '', window.location.pathname);
+        setEmailConfirmado(true);
+      }
+    }
+
+    supabaseClient.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) carregarPerfil(session.user.id);
+      setLoadingAuth(false);
+    });
+
+    const { data: { subscription } } = supabaseClient.auth.onAuthStateChange(
+      (_event, session) => {
+        setSession(session);
+        if (session) carregarPerfil(session.user.id);
+        else { setPerfil(null); }
+      }
+    );
+    return () => subscription.unsubscribe();
+  }, []);
+
+  async function carregarPerfil(userId) {
+    const { data } = await supabaseClient.from('perfis').select('*').eq('id', userId).single();
+    if (data) setPerfil({ ...data, foto: data.foto_url, inicial: data.nome?.charAt(0) });
+  }
+
+  useEffect_A(() => {
+    function onUnhandled(e) {
+      console.error('Erro não tratado:', e.reason);
+    }
+    window.addEventListener('unhandledrejection', onUnhandled);
+    return () => window.removeEventListener('unhandledrejection', onUnhandled);
+  }, []);
+
+  const { data, setData, recarregar } = useAppData(session?.user?.id);
+
   const [route, setRoute] = useState_A({ view: 'central' });
   const [searchOpen, setSearchOpen] = useState_A(false);
   const [newEmpOpen, setNewEmpOpen] = useState_A(false);
@@ -28,14 +75,6 @@ function App() {
   const [perfilOpen, setPerfilOpen] = useState_A(false);
   const [mobileNavOpen, setMobileNavOpen] = useState_A(false);
   const isMobile = useIsMobile(768);
-  const [perfil, setPerfil] = useState_A({
-    nome: 'Karla Silva',
-    email: 'karla@ksgestao.com.br',
-    telefone: '(11) 99999-0000',
-    cargo: 'Administradora',
-    inicial: 'K',
-    foto: null,
-  });
   const [empresaInfo, setEmpresaInfo] = useState_A({
     razaoSocial: 'KS Gestão & BPO Financeiro Ltda',
     nomeFantasia: 'KS Gestão',
@@ -104,35 +143,208 @@ function App() {
     return () => document.removeEventListener('mousedown', onClick);
   }, []);
 
-  function updatePortadores(portadores) { setData(d => ({ ...d, portadores })); }
-  function updateCentros(centrosCusto) { setData(d => ({ ...d, centrosCusto })); }
-  function updateFormas(formasPagamento) { setData(d => ({ ...d, formasPagamento })); }
+  async function savePortador(p) {
+    const isNew = String(p.id).startsWith('port_');
+    if (isNew) {
+      const { data: res, error } = await window.supabaseClient.from('portadores')
+        .insert({ user_id: session.user.id, nome: p.nome, tipo: p.tipo, cor: p.cor })
+        .select().single();
+      if (!error) {
+        setData(d => ({ ...d, portadores: [...d.portadores, { id: res.id, nome: res.nome, tipo: res.tipo, cor: res.cor }] }));
+        toast.push('Portador adicionado!');
+      } else toast.push('Erro ao adicionar portador', 'error');
+    } else {
+      const { error } = await window.supabaseClient.from('portadores')
+        .update({ nome: p.nome, tipo: p.tipo, cor: p.cor, updated_at: new Date().toISOString() })
+        .eq('id', p.id);
+      if (!error) {
+        setData(d => ({ ...d, portadores: d.portadores.map(x => x.id === p.id ? p : x) }));
+        toast.push('Portador atualizado!');
+      } else toast.push('Erro ao atualizar portador', 'error');
+    }
+  }
 
-  function createEmpresa(emp) {
-    setData(d => ({ ...d, empresas: [...d.empresas, emp], lancamentos: { ...d.lancamentos, [emp.id]: [] } }));
+  async function deletePortador(id) {
+    const { error } = await window.supabaseClient.from('portadores').update({ ativo: false }).eq('id', id);
+    if (!error) {
+      setData(d => ({ ...d, portadores: d.portadores.filter(x => x.id !== id) }));
+      toast.push('Portador excluído');
+    } else toast.push('Erro ao excluir portador', 'error');
   }
-  function editEmpresa(emp) {
+
+  async function saveCentro(c) {
+    const isNew = String(c.id).startsWith('cc_');
+    if (isNew) {
+      const { data: res, error } = await window.supabaseClient.from('centros_custo')
+        .insert({ user_id: session.user.id, nome: c.nome, tipo: c.tipo })
+        .select().single();
+      if (!error) {
+        setData(d => ({ ...d, centrosCusto: [...d.centrosCusto, { id: res.id, nome: res.nome, tipo: res.tipo }] }));
+        toast.push('Centro adicionado!');
+      } else toast.push('Erro ao adicionar centro', 'error');
+    } else {
+      const { error } = await window.supabaseClient.from('centros_custo')
+        .update({ nome: c.nome, tipo: c.tipo, updated_at: new Date().toISOString() })
+        .eq('id', c.id);
+      if (!error) {
+        setData(d => ({ ...d, centrosCusto: d.centrosCusto.map(x => x.id === c.id ? c : x) }));
+        toast.push('Centro atualizado!');
+      } else toast.push('Erro ao atualizar centro', 'error');
+    }
+  }
+
+  async function deleteCentro(id) {
+    const { error } = await window.supabaseClient.from('centros_custo').update({ ativo: false }).eq('id', id);
+    if (!error) {
+      setData(d => ({ ...d, centrosCusto: d.centrosCusto.filter(x => x.id !== id) }));
+      toast.push('Centro excluído');
+    } else toast.push('Erro ao excluir centro', 'error');
+  }
+
+  async function saveForma(nome) {
+    const ordem = data.formasPagamento.length;
+    const { error } = await window.supabaseClient.from('formas_pagamento')
+      .insert({ user_id: session.user.id, nome, ordem });
+    if (!error) {
+      setData(d => ({ ...d, formasPagamento: [...d.formasPagamento, nome] }));
+      toast.push('Forma adicionada!');
+    } else toast.push('Erro ao adicionar forma', 'error');
+  }
+
+  async function deleteForma(nome) {
+    const { error } = await window.supabaseClient.from('formas_pagamento').update({ ativo: false }).eq('nome', nome).eq('user_id', session.user.id);
+    if (!error) {
+      setData(d => ({ ...d, formasPagamento: d.formasPagamento.filter(x => x !== nome) }));
+      toast.push('Forma excluída');
+    } else toast.push('Erro ao excluir forma', 'error');
+  }
+
+  async function createEmpresa(emp) {
+    const { data: resData, error } = await window.supabaseClient.from('empresas').insert({
+      user_id: session.user.id,
+      nome: emp.nome, cnpj: emp.cnpj,
+      nome_fantasia: emp.nomeFantasia, segmento: emp.segmento,
+      responsavel: emp.responsavel, email: emp.email, telefone: emp.telefone,
+      portadores_ativos: emp.portadoresAtivos || [],
+      centros_ativos: emp.centrosAtivos || []
+    }).select().single();
+    
+    if (error) { toast.push('Erro ao criar empresa: ' + error.message, 'error'); return; }
+    
+    setData(d => ({
+      ...d,
+      empresas: [...d.empresas, {
+        id: resData.id, nome: resData.nome, cnpj: resData.cnpj,
+        nomeFantasia: resData.nome_fantasia, segmento: resData.segmento,
+        responsavel: resData.responsavel, email: resData.email, telefone: resData.telefone,
+        portadoresAtivos: resData.portadores_ativos || [],
+        centrosAtivos: resData.centros_ativos || [],
+        criadaEm: resData.created_at
+      }],
+      lancamentos: { ...d.lancamentos, [resData.id]: [] }
+    }));
+    toast.push('Empresa cadastrada com sucesso!');
+  }
+
+  async function editEmpresa(emp) {
+    const { error } = await window.supabaseClient.from('empresas')
+      .update({
+        nome: emp.nome, cnpj: emp.cnpj,
+        nome_fantasia: emp.nomeFantasia, segmento: emp.segmento,
+        responsavel: emp.responsavel, email: emp.email, telefone: emp.telefone,
+        portadores_ativos: emp.portadoresAtivos || [],
+        centros_ativos: emp.centrosAtivos || [],
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', emp.id);
+    
+    if (error) { toast.push('Erro ao atualizar empresa', 'error'); return; }
     setData(d => ({ ...d, empresas: d.empresas.map(e => e.id === emp.id ? emp : e) }));
+    toast.push('Empresa atualizada!');
   }
-  function deleteEmpresa(id) {
+
+  async function deleteEmpresa(id) {
+    const { error } = await window.supabaseClient.from('empresas')
+      .update({ ativo: false })
+      .eq('id', id);
+    
+    if (error) { toast.push('Erro ao excluir empresa', 'error'); return; }
     setData(d => {
       const novo = { ...d.lancamentos }; delete novo[id];
       return { ...d, empresas: d.empresas.filter(e => e.id !== id), lancamentos: novo };
     });
     if (route.view === 'empresa' && route.id === id) setRoute({ view: 'central' });
+    toast.push('Empresa removida');
   }
-  function upsertLanc(l) {
+
+  async function upsertLanc(l) {
+    const payload = {
+      user_id: session.user.id,
+      empresa_id: l.empresaId,
+      tipo: l.tipo, descricao: l.descricao,
+      valor: parseFloat(l.valor),
+      vencimento: l.vencimento, competencia: l.competencia,
+      portador_id: l.portadorId || null,
+      centro_custo_id: l.centroCustoId || null,
+      forma_pagamento: l.formaPagamento,
+      pago: l.pago || false,
+      pagamento_data: l.pagamento?.data || null,
+      pagamento_comprovante: l.pagamento?.comprovante || null,
+      observacao: l.observacao || ''
+    };
+
+    let result;
+    const existe = (data.lancamentos[l.empresaId] || []).some(x => x.id === l.id);
+    
+    if (existe) {
+      result = await window.supabaseClient.from('lancamentos')
+        .update({ ...payload, updated_at: new Date().toISOString() })
+        .eq('id', l.id).select().single();
+    } else {
+      result = await window.supabaseClient.from('lancamentos')
+        .insert(payload).select().single();
+    }
+
+    if (result.error) { toast.push('Erro ao salvar lançamento', 'error'); return; }
+    
+    const ln = result.data;
+    const lancNorm = {
+      id: ln.id, empresaId: ln.empresa_id, tipo: ln.tipo,
+      descricao: ln.descricao, valor: parseFloat(ln.valor),
+      vencimento: ln.vencimento, competencia: ln.competencia,
+      portadorId: ln.portador_id, centroCustoId: ln.centro_custo_id,
+      formaPagamento: ln.forma_pagamento, pago: ln.pago,
+      pagamento: ln.pago ? { data: ln.pagamento_data, comprovante: ln.pagamento_comprovante } : null,
+      observacao: ln.observacao
+    };
+
     setData(d => {
       const cur = d.lancamentos[l.empresaId] || [];
-      const exists = cur.some(x => x.id === l.id);
-      const novo = exists ? cur.map(x => x.id === l.id ? l : x) : [...cur, l];
+      const novo = existe ? cur.map(x => x.id === lancNorm.id ? lancNorm : x) : [...cur, lancNorm];
       return { ...d, lancamentos: { ...d.lancamentos, [l.empresaId]: novo } };
     });
   }
-  function deleteLanc(empId, lancId) {
+
+  async function deleteLanc(empId, lancId) {
+    const { error } = await window.supabaseClient.from('lancamentos').delete().eq('id', lancId);
+    if (error) { toast.push('Erro ao excluir', 'error'); return; }
     setData(d => ({ ...d, lancamentos: { ...d.lancamentos, [empId]: (d.lancamentos[empId] || []).filter(x => x.id !== lancId) } }));
   }
-  function payLanc(empId, lancId, payload) {
+
+  async function payLanc(empId, lancId, payload) {
+    const { data: updated, error } = await window.supabaseClient.from('lancamentos')
+      .update({
+        pago: true,
+        portador_id: payload.portadorId,
+        pagamento_data: payload.data,
+        pagamento_comprovante: payload.comprovante || `CMP-${Date.now()}.pdf`,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', lancId)
+      .select().single();
+    
+    if (error) { toast.push('Erro ao registrar pagamento', 'error'); return; }
+    
     setData(d => ({
       ...d,
       lancamentos: {
@@ -171,6 +383,26 @@ function App() {
     return [];
   }, [route, currentEmpresa]);
 
+  if (loadingAuth) return (
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', background:'var(--c-bg)' }}>
+      <LoadingSpinner size={40} />
+    </div>
+  );
+
+  if (!session) {
+    if (route.view === 'reset-senha') return <TelaResetSenha />;
+    return <LoginScreen emailConfirmado={emailConfirmado} />;
+  }
+
+  if (data.loading) return (
+    <div style={{ padding:28 }}>
+      {[1,2,3,4].map(i => (
+        <div key={i} style={{ height:100, borderRadius:12, marginBottom:12, background:'var(--c-border)', animation:'pulse 1.5s infinite' }} />
+      ))}
+      <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }`}</style>
+    </div>
+  );
+
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--c-bg)' }}>
       <Sidebar collapsed={collapsed} setCollapsed={v => setTweak('sidebarCollapsed', v)} route={route} setRoute={setRoute}
@@ -194,6 +426,7 @@ function App() {
           onSelectEmpresa={(id) => { setRoute({ view: 'empresa', id }); setEmpresasOpen(false); }}
           onNewEmpresa={() => { setEmpresasOpen(false); setNewEmpOpen(true); }}
           perfil={perfil}
+          session={session}
           perfilOpen={perfilOpen}
           onPerfilClick={() => { setPerfilOpen(o => !o); setNotifOpen(false); setEmpresasOpen(false); }}
           onOpenSettings={(tab) => { setRoute({ view: 'configuracoes', tab }); setPerfilOpen(false); }}
@@ -228,6 +461,7 @@ function App() {
           {route.view === 'configuracoes' && (
             <Configuracoes
               initialTab={route.tab}
+              session={session}
               perfil={perfil}
               onUpdatePerfil={(novo) => setPerfil(p => ({ ...p, ...novo }))}
               empresaInfo={empresaInfo}
@@ -235,9 +469,12 @@ function App() {
               portadores={data.portadores}
               centrosCusto={data.centrosCusto}
               formasPagamento={data.formasPagamento}
-              onUpdatePortadores={updatePortadores}
-              onUpdateCentros={updateCentros}
-              onUpdateFormas={updateFormas}
+              onSavePortador={savePortador}
+              onDeletePortador={deletePortador}
+              onSaveCentro={saveCentro}
+              onDeleteCentro={deleteCentro}
+              onSaveForma={saveForma}
+              onDeleteForma={deleteForma}
               tweaks={t}
               setTweak={setTweak}
               colorOptions={COLOR_OPTIONS}
@@ -402,7 +639,7 @@ function Sidebar({ collapsed, setCollapsed, route, setRoute, isMobile, mobileOpe
 }
 
 // ----- TopBar -----
-function TopBar({ breadcrumb, isMobile, onMenuClick, onSearchClick, notifCount, onNotifClick, notifOpen, notifs, onNotifSelect, empresasCount, empresasOpen, onEmpresasClick, data, onSelectEmpresa, onNewEmpresa, perfil, perfilOpen, onPerfilClick, onOpenSettings }) {
+function TopBar({ breadcrumb, isMobile, onMenuClick, onSearchClick, notifCount, onNotifClick, notifOpen, notifs, onNotifSelect, empresasCount, empresasOpen, onEmpresasClick, data, onSelectEmpresa, onNewEmpresa, perfil, session, perfilOpen, onPerfilClick, onOpenSettings }) {
   return (
     <header style={{
       background: 'var(--c-surface)', borderBottom: '1px solid var(--c-border)',
@@ -440,20 +677,7 @@ function TopBar({ breadcrumb, isMobile, onMenuClick, onSearchClick, notifCount, 
           <Icon name="search" size={18} />
         </button>
       ) : (
-        <button onClick={onSearchClick} style={{
-          background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 9,
-          padding: '7px 12px', display: 'flex', alignItems: 'center', gap: 9,
-          cursor: 'pointer', fontSize: 13, color: 'var(--c-text-muted)',
-          width: 300, fontFamily: 'inherit', transition: 'border-color 0.15s, box-shadow 0.15s',
-          flexShrink: 0
-        }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--c-primary)'; e.currentTarget.style.boxShadow = '0 0 0 3px var(--c-primary-soft)'; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--c-border)'; e.currentTarget.style.boxShadow = 'none'; }}
-        >
-          <Icon name="search" size={14} color="var(--c-text-muted)" />
-          <span style={{ flex: 1, textAlign: 'left', userSelect: 'none' }}>Pesquisar...</span>
-          <kbd style={kbdStyle}>⌘K</kbd>
-        </button>
+        <BuscaGlobal data={data} onSelectEmpresa={onSelectEmpresa} onSelectLanc={() => {}} />
       )}
 
       {/* Direita */}
@@ -535,7 +759,7 @@ function TopBar({ breadcrumb, isMobile, onMenuClick, onSearchClick, notifCount, 
               ? <img src={perfil.foto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               : <span style={{ fontWeight: 700, fontSize: 13 }}>{perfil?.inicial || (perfil?.nome || 'K').charAt(0)}</span>}
           </button>
-          {perfilOpen && <PerfilDropdown perfil={perfil} onOpenSettings={onOpenSettings} />}
+          {perfilOpen && <DropdownPerfil perfil={perfil} session={session} onNavegar={aba => onOpenSettings(aba)} onLogout={async () => { await window.supabaseClient.auth.signOut(); window.location.reload(); }} />}
         </div>
       </div>
     </header>
@@ -755,7 +979,7 @@ function PerfilDropdown({ perfil, onOpenSettings }) {
 
       <div style={{ height: 1, background: 'var(--c-border)' }} />
       <div style={{ padding: '6px 0' }}>
-        <button style={{ ...itemStyle, color: '#dc2626' }}
+        <button onClick={async () => { await window.supabaseClient.auth.signOut(); window.location.reload(); }} style={{ ...itemStyle, color: '#dc2626' }}
           onMouseEnter={e => e.currentTarget.style.background = '#fef2f2'}
           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
         >
@@ -889,13 +1113,29 @@ function EmpresaWizard({ empresa, portadores, centrosCusto, onClose, onSave, onD
     centrosAtivos: [],
     criadaEm: todayISO()
   });
+  const [erros, setErros] = useState_A({});
+
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
-  const canProceed = f.nome.trim() && f.cnpj.trim();
+  
+  function validarStep1() {
+    const e = {};
+    const errNome = Validacao.required(f.nome, 'Razão Social');
+    const errCNPJ = f.cnpj ? Validacao.cnpj(f.cnpj) : Validacao.required(f.cnpj, 'CNPJ');
+    const errEmail = f.email ? Validacao.email(f.email) : null;
+    if (errNome) e.nome = errNome;
+    if (errCNPJ) e.cnpj = errCNPJ;
+    if (errEmail) e.email = errEmail;
+    setErros(e);
+    return Object.keys(e).length === 0;
+  }
+
+  function proceedToStep2() {
+    if (validarStep1()) setStep(2);
+  }
 
   function submit() {
-    if (!f.nome.trim()) { setStep(1); return alert('Nome é obrigatório'); }
-    if (!f.cnpj.trim()) { setStep(1); return alert('CNPJ é obrigatório'); }
-    onSave(f);
+    if (validarStep1()) onSave(f);
+    else setStep(1);
   }
   function togglePort(id) {
     set('portadoresAtivos', f.portadoresAtivos.includes(id) ? f.portadoresAtivos.filter(x => x !== id) : [...f.portadoresAtivos, id]);
@@ -910,7 +1150,7 @@ function EmpresaWizard({ empresa, portadores, centrosCusto, onClose, onSave, onD
         {onDelete && <Btn variant="danger" icon="trash" onClick={onDelete} style={{ marginRight: 'auto' }}>Excluir</Btn>}
         <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
         {step === 1
-          ? <Btn variant="primary" disabled={!canProceed} onClick={() => setStep(2)}>Continuar →</Btn>
+          ? <Btn variant="primary" onClick={proceedToStep2}>Continuar →</Btn>
           : <><Btn variant="secondary" onClick={() => setStep(1)}>← Voltar</Btn><Btn variant="primary" onClick={submit}>{empresa ? 'Salvar' : 'Cadastrar'}</Btn></>
         }
       </>}>
@@ -931,13 +1171,24 @@ function EmpresaWizard({ empresa, portadores, centrosCusto, onClose, onSave, onD
 
       {step === 1 && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-          <Field label="Razão Social" required span={2}><Input value={f.nome} onChange={e => set('nome', e.target.value)} placeholder="Ex: Padaria Bom Pão Ltda" autoFocus /></Field>
-          <Field label="Nome Fantasia" span={2}><Input value={f.nomeFantasia || ''} onChange={e => set('nomeFantasia', e.target.value)} placeholder="Como a empresa é conhecida" /></Field>
-          <Field label="CNPJ" required><Input value={f.cnpj} onChange={e => set('cnpj', e.target.value)} placeholder="00.000.000/0000-00" /></Field>
+          <Field label="Razão Social" required span={2} erro={erros.nome}>
+            <Input value={f.nome} onChange={e => set('nome', e.target.value)} placeholder="Ex: Padaria Bom Pão Ltda" autoFocus style={{ borderColor: erros.nome ? '#dc2626' : undefined }} />
+            {erros.nome && <span style={{ fontSize:11, color:'#dc2626', marginTop:2 }}>{erros.nome}</span>}
+          </Field>
+          <Field label="Nome Fantasia" span={2}>
+            <Input value={f.nomeFantasia || ''} onChange={e => set('nomeFantasia', e.target.value)} placeholder="Como a empresa é conhecida" />
+          </Field>
+          <Field label="CNPJ" required erro={erros.cnpj}>
+            <Input value={f.cnpj} onChange={e => set('cnpj', maskCNPJ(e.target.value))} placeholder="00.000.000/0000-00" maxLength={18} style={{ borderColor: erros.cnpj ? '#dc2626' : undefined }} />
+            {erros.cnpj && <span style={{ fontSize:11, color:'#dc2626', marginTop:2 }}>{erros.cnpj}</span>}
+          </Field>
           <Field label="Setor"><Input value={f.segmento || ''} onChange={e => set('segmento', e.target.value)} placeholder="Ex: Alimentação" /></Field>
           <Field label="Responsável"><Input value={f.responsavel || ''} onChange={e => set('responsavel', e.target.value)} /></Field>
-          <Field label="Telefone"><Input value={f.telefone || ''} onChange={e => set('telefone', e.target.value)} placeholder="(00) 00000-0000" /></Field>
-          <Field label="E-mail" span={2}><Input value={f.email || ''} type="email" onChange={e => set('email', e.target.value)} placeholder="contato@empresa.com.br" /></Field>
+          <Field label="Telefone"><Input value={f.telefone || ''} onChange={e => set('telefone', maskTelefone(e.target.value))} placeholder="(00) 00000-0000" maxLength={15} /></Field>
+          <Field label="E-mail" span={2} erro={erros.email}>
+            <Input value={f.email || ''} type="email" onChange={e => set('email', e.target.value)} placeholder="contato@empresa.com.br" style={{ borderColor: erros.email ? '#dc2626' : undefined }} />
+            {erros.email && <span style={{ fontSize:11, color:'#dc2626', marginTop:2 }}>{erros.email}</span>}
+          </Field>
         </div>
       )}
 
@@ -986,6 +1237,335 @@ function EmpresaWizard({ empresa, portadores, centrosCusto, onClose, onSave, onD
         </div>
       )}
     </Modal>
+  );
+}
+
+// ----- BuscaGlobal -----
+function BuscaGlobal({ data, onSelectEmpresa, onSelectLanc }) {
+  const [q, setQ] = useState_A('');
+  const [aberta, setAberta] = useState_A(false);
+  const inputRef = useRef_A(null);
+
+  useEffect_A(() => {
+    function onClickFora(e) { if (aberta && !e.target.closest('[data-busca]')) setAberta(false); }
+    document.addEventListener('mousedown', onClickFora);
+    return () => document.removeEventListener('mousedown', onClickFora);
+  }, [aberta]);
+
+  const resultados = useMemo_A(() => {
+    if (q.length < 2) return { empresas: [], lancamentos: [] };
+    const ql = q.toLowerCase();
+    
+    const empresas = data.empresas.filter(e =>
+      e.nome.toLowerCase().includes(ql) ||
+      (e.cnpj || '').includes(q) ||
+      (e.segmento || '').toLowerCase().includes(ql)
+    ).slice(0, 5);
+
+    const lancamentos = [];
+    Object.entries(data.lancamentos).forEach(([empId, lancs]) => {
+      const emp = data.empresas.find(e => e.id === empId);
+      lancs.filter(l => l.descricao.toLowerCase().includes(ql))
+        .slice(0, 3)
+        .forEach(l => lancamentos.push({ ...l, empresaNome: emp?.nome }));
+    });
+
+    return { empresas, lancamentos: lancamentos.slice(0, 5) };
+  }, [q, data]);
+
+  return (
+    <div data-busca style={{ position: 'relative', width: 300 }}>
+      <div style={{
+        background: 'var(--c-bg)', border: `1px solid ${aberta ? 'var(--c-primary)' : 'var(--c-border)'}`, borderRadius: 9,
+        padding: '7px 12px', display: 'flex', alignItems: 'center', gap: 9,
+        cursor: 'text', fontSize: 13, color: 'var(--c-text)',
+        boxShadow: aberta ? '0 0 0 3px var(--c-primary-soft)' : 'none',
+        transition: 'all 0.15s'
+      }}>
+        <Icon name="search" size={14} color={aberta ? 'var(--c-primary)' : 'var(--c-text-muted)'} />
+        <input ref={inputRef} value={q} onChange={e => { setQ(e.target.value); setAberta(true); }} onFocus={() => setAberta(true)}
+          placeholder="Pesquisar..." style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', color: 'inherit', fontFamily: 'inherit', fontSize: 'inherit' }} />
+        {q ? (
+          <button onClick={() => { setQ(''); inputRef.current?.focus(); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--c-text-muted)' }}><Icon name="x" size={12} /></button>
+        ) : (
+          <kbd style={kbdStyle}>⌘K</kbd>
+        )}
+      </div>
+
+      {aberta && (q.length >= 2) && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 8px)', left: 0, width: 380, background: 'var(--c-surface)',
+          border: '1px solid var(--c-border)', borderRadius: 12, boxShadow: '0 12px 40px rgba(15,23,42,.13)',
+          zIndex: 200, overflow: 'hidden', animation: 'dropIn 0.14s cubic-bezier(.16,1,.3,1)'
+        }}>
+          {resultados.empresas.length === 0 && resultados.lancamentos.length === 0 ? (
+            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--c-text-muted)', fontSize: 13 }}>Nenhum resultado encontrado.</div>
+          ) : (
+            <div style={{ maxHeight: 360, overflowY: 'auto', padding: '6px 0' }}>
+              {resultados.empresas.length > 0 && (
+                <div>
+                  <div style={{ padding: '8px 14px 4px', fontSize: 10, fontWeight: 700, color: 'var(--c-text-muted)', textTransform: 'uppercase' }}>Empresas</div>
+                  {resultados.empresas.map(e => (
+                    <button key={e.id} onClick={() => { onSelectEmpresa(e.id); setAberta(false); setQ(''); }} style={{ width: '100%', padding: '8px 14px', background: 'transparent', border: 'none', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'inherit' }} onMouseEnter={ev => ev.currentTarget.style.background = 'var(--c-bg)'} onMouseLeave={ev => ev.currentTarget.style.background = 'transparent'}>
+                      <Icon name="building" size={14} color="var(--c-text-muted)" />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--c-text)' }}>{e.nome}</div>
+                        <div style={{ fontSize: 11, color: 'var(--c-text-muted)' }}>{e.cnpj}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {resultados.lancamentos.length > 0 && (
+                <div>
+                  <div style={{ padding: '8px 14px 4px', fontSize: 10, fontWeight: 700, color: 'var(--c-text-muted)', textTransform: 'uppercase', borderTop: resultados.empresas.length > 0 ? '1px solid var(--c-border)' : 'none', marginTop: resultados.empresas.length > 0 ? 6 : 0 }}>Lançamentos</div>
+                  {resultados.lancamentos.map(l => (
+                    <button key={l.id} onClick={() => { onSelectEmpresa(l.empresaId); setAberta(false); setQ(''); }} style={{ width: '100%', padding: '8px 14px', background: 'transparent', border: 'none', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'inherit' }} onMouseEnter={ev => ev.currentTarget.style.background = 'var(--c-bg)'} onMouseLeave={ev => ev.currentTarget.style.background = 'transparent'}>
+                      <span style={{ width: 6, height: 6, borderRadius: 99, background: l.tipo === 'entrada' ? '#16a34a' : '#dc2626' }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--c-text)' }}>{l.descricao}</div>
+                        <div style={{ fontSize: 11, color: 'var(--c-text-muted)' }}>{l.empresaNome}</div>
+                      </div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: l.tipo === 'entrada' ? '#16a34a' : '#dc2626' }}>{formatBRL(l.valor)}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TelaResetSenha() {
+  const [novaSenha, setNovaSenha] = useState_A('');
+  const [confirmar, setConfirmar] = useState_A('');
+  const [loading, setLoading] = useState_A(false);
+  const [erro, setErro] = useState_A('');
+  const [sucesso, setSucesso] = useState_A(false);
+
+  async function salvar(e) {
+    e.preventDefault();
+    if (novaSenha.length < 6) { setErro('Senha deve ter pelo menos 6 caracteres'); return; }
+    if (novaSenha !== confirmar) { setErro('As senhas não coincidem'); return; }
+    setLoading(true); setErro('');
+    const { error } = await window.supabaseClient.auth.updateUser({ password: novaSenha });
+    if (error) { setErro('Erro ao redefinir senha: ' + error.message); }
+    else {
+      setSucesso(true);
+      setTimeout(() => window.history.replaceState({}, '', window.location.pathname), 2000);
+    }
+    setLoading(false);
+  }
+
+  const layoutCentrado = { minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'var(--c-bg)', padding:20 };
+  const cardLogin = { width:'100%', maxWidth:420, background:'var(--c-surface)', borderRadius:16, padding:36, border:'1px solid var(--c-border)', boxShadow:'0 20px 60px rgba(0,0,0,.1)' };
+  const logoStyle = { width:52, height:52, borderRadius:12, background:'var(--c-primary)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 12px', fontWeight:800, fontSize:22, color:'#fff' };
+
+  if (sucesso) return (
+    <div style={layoutCentrado}>
+      <div style={cardLogin}>
+        <div style={{ textAlign:'center', color:'#16a34a', fontSize:48, marginBottom:16 }}>✓</div>
+        <h2 style={{ textAlign:'center', margin:'0 0 8px' }}>Senha redefinida!</h2>
+        <p style={{ textAlign:'center', color:'var(--c-text-muted)', fontSize:13 }}>
+          Redirecionando para o login...
+        </p>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={layoutCentrado}>
+      <div style={cardLogin}>
+        <div style={{ textAlign:'center', marginBottom:24 }}>
+          <div style={logoStyle}>K</div>
+          <h2 style={{ margin:'8px 0 4px' }}>Nova senha</h2>
+          <p style={{ color:'var(--c-text-muted)', fontSize:13, margin:0 }}>
+            Digite sua nova senha de acesso
+          </p>
+        </div>
+        {erro && <div style={{ background:'rgba(220,38,38,.1)', border:'1px solid rgba(220,38,38,.3)', borderRadius:8, padding:'10px 14px', marginBottom:16, fontSize:13, color:'#dc2626' }}>{erro}</div>}
+        <form onSubmit={salvar} style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          <Field label="Nova senha" required>
+            <Input type="password" value={novaSenha} onChange={e => setNovaSenha(e.target.value)} placeholder="Mínimo 6 caracteres" autoFocus />
+          </Field>
+          <Field label="Confirmar nova senha" required>
+            <Input type="password" value={confirmar} onChange={e => setConfirmar(e.target.value)} placeholder="Repita a senha" />
+          </Field>
+          <Btn type="submit" variant="primary" disabled={loading} style={{ width:'100%', justifyContent:'center', padding:'11px 0' }}>
+            {loading ? 'Salvando...' : 'Redefinir senha'}
+          </Btn>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ----- LoginScreen -----
+function LoginScreen({ emailConfirmado }) {
+  const [modo, setModo] = useState_A('login');
+  const [email, setEmail] = useState_A('');
+  const [senha, setSenha] = useState_A('');
+  const [nome, setNome] = useState_A('');
+  const [lembrar, setLembrar] = useState_A(true);
+  const [loading, setLoading] = useState_A(false);
+  const [erro, setErro] = useState_A('');
+  const [erroEspecial, setErroEspecial] = useState_A('');
+  const [sucesso, setSucesso] = useState_A('');
+
+  useEffect_A(() => {
+    if (emailConfirmado) setSucesso('E-mail confirmado com sucesso! Você já pode entrar.');
+  }, [emailConfirmado]);
+
+  async function handleLogin(e) {
+    e.preventDefault();
+    setErro(''); setErroEspecial(''); setLoading(true);
+    const errEmail = Validacao.email(email);
+    if (errEmail) { setErro(errEmail); setLoading(false); return; }
+
+    const { error } = await window.supabaseClient.auth.signInWithPassword({ email, password: senha });
+    if (error) {
+      if (error.message.includes('Email not confirmed')) {
+        setErroEspecial('email_nao_confirmado');
+      } else {
+        setErro(traduzirErroAuth(error.message));
+      }
+    } else {
+      if (!lembrar) {
+        const { data: { session } } = await window.supabaseClient.auth.getSession();
+        if (session) {
+          sessionStorage.setItem('sb-session', JSON.stringify(session));
+          localStorage.removeItem(`sb-${window.SUPABASE_URL?.split('//')[1].split('.')[0] || 'svgvtmkqjvxsoduohfuy'}-auth-token`);
+        }
+      }
+    }
+    setLoading(false);
+  }
+
+  async function reenviarConfirmacao() {
+    const { error } = await window.supabaseClient.auth.resend({ type: 'signup', email });
+    if (!error) alert('E-mail reenviado! Verifique sua caixa de entrada.');
+    else alert('Erro ao reenviar e-mail.');
+  }
+
+  async function handleCadastro(e) {
+    e.preventDefault();
+    setErro(''); setLoading(true);
+    const errEmail = Validacao.email(email);
+    if (errEmail) { setErro(errEmail); setLoading(false); return; }
+    if (!nome.trim()) { setErro('Nome é obrigatório'); setLoading(false); return; }
+
+    const { error } = await window.supabaseClient.auth.signUp({
+      email, password: senha,
+      options: { data: { nome } }
+    });
+    if (error) setErro(traduzirErroAuth(error.message));
+    else setSucesso('Conta criada! Verifique seu e-mail para confirmar.');
+    setLoading(false);
+  }
+
+  async function handleReset(e) {
+    e.preventDefault();
+    setErro(''); setLoading(true);
+    const errEmail = Validacao.email(email);
+    if (errEmail) { setErro(errEmail); setLoading(false); return; }
+
+    const { error } = await window.supabaseClient.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin
+    });
+    if (error) setErro(traduzirErroAuth(error.message));
+    else setSucesso('E-mail de recuperação enviado! Verifique sua caixa de entrada.');
+    setLoading(false);
+  }
+
+  function traduzirErroAuth(msg) {
+    if (msg.includes('Invalid login')) return 'E-mail ou senha incorretos.';
+    if (msg.includes('Email not confirmed')) return 'Confirme seu e-mail antes de entrar.';
+    if (msg.includes('User already registered')) return 'Este e-mail já está cadastrado.';
+    if (msg.includes('Password should be')) return 'Senha deve ter pelo menos 6 caracteres.';
+    return 'Erro: ' + msg;
+  }
+
+  return (
+    <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'var(--c-bg)', padding:20 }}>
+      <div style={{ width:'100%', maxWidth:420, background:'var(--c-surface)', borderRadius:16, padding:36, border:'1px solid var(--c-border)', boxShadow:'0 20px 60px rgba(0,0,0,.1)' }}>
+        <div style={{ textAlign:'center', marginBottom:28 }}>
+          <div style={{ width:52, height:52, borderRadius:12, background:'var(--c-primary)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 12px', fontWeight:800, fontSize:22, color:'#fff' }}>K</div>
+          <div style={{ fontSize:20, fontWeight:700 }}>KS Gestão</div>
+          <div style={{ fontSize:12, color:'var(--c-text-muted)', marginTop:2 }}>BPO Financeiro</div>
+        </div>
+
+        <div style={{ marginBottom:20 }}>
+          <h2 style={{ fontSize:18, fontWeight:600, margin:'0 0 4px' }}>
+            {modo==='login' ? 'Entrar na conta' : modo==='cadastro' ? 'Criar conta' : 'Recuperar senha'}
+          </h2>
+          <p style={{ fontSize:13, color:'var(--c-text-muted)', margin:0 }}>
+            {modo==='login' ? 'Acesse o painel de gestão' : modo==='cadastro' ? 'Preencha os dados para começar' : 'Enviaremos um link para seu e-mail'}
+          </p>
+        </div>
+
+        {erro && <div style={{ background:'rgba(220,38,38,.1)', border:'1px solid rgba(220,38,38,.3)', borderRadius:8, padding:'10px 14px', marginBottom:16, fontSize:13, color:'#dc2626' }}>{erro}</div>}
+        {sucesso && <div style={{ background:'rgba(22,163,74,.1)', border:'1px solid rgba(22,163,74,.3)', borderRadius:8, padding:'10px 14px', marginBottom:16, fontSize:13, color:'#16a34a' }}>{sucesso}</div>}
+        
+        {erroEspecial === 'email_nao_confirmado' && (
+          <div style={{ background:'rgba(245,158,11,.1)', border:'1px solid rgba(245,158,11,.4)', borderRadius:8, padding:'12px 14px', marginBottom:16 }}>
+            <div style={{ fontSize:13, fontWeight:600, color:'#92400e', marginBottom:6 }}>
+              📧 Confirme seu e-mail primeiro
+            </div>
+            <div style={{ fontSize:12, color:'#78350f', lineHeight:1.5 }}>
+              Enviamos um link de confirmação para <strong>{email}</strong>.
+              Verifique sua caixa de entrada (e o spam).
+            </div>
+            <button type="button" onClick={reenviarConfirmacao} style={{ marginTop:8, fontSize:12, color:'var(--c-primary)', background:'none', border:'none', cursor:'pointer', fontFamily:'inherit', padding:0, textDecoration:'underline' }}>
+              Reenviar e-mail de confirmação
+            </button>
+          </div>
+        )}
+
+        <form onSubmit={modo==='login' ? handleLogin : modo==='cadastro' ? handleCadastro : handleReset} style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          {modo==='cadastro' && (
+            <Field label="Nome completo" required>
+              <Input value={nome} onChange={e=>setNome(e.target.value)} placeholder="Seu nome" autoFocus />
+            </Field>
+          )}
+          <Field label="E-mail" required>
+            <Input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="seu@email.com" autoFocus={modo!=='cadastro'} />
+          </Field>
+          {modo !== 'reset' && (
+            <Field label="Senha" required>
+              <Input type="password" value={senha} onChange={e=>setSenha(e.target.value)} placeholder="••••••••" />
+            </Field>
+          )}
+          {modo === 'login' && (
+            <div style={{ display:'flex', alignItems:'center', gap:8, margin:'4px 0' }}>
+              <input type="checkbox" id="lembrar" checked={lembrar}
+                onChange={e => setLembrar(e.target.checked)}
+                style={{ width:15, height:15, accentColor:'var(--c-primary)', cursor:'pointer' }} />
+              <label htmlFor="lembrar" style={{ fontSize:13, color:'var(--c-text-muted)', cursor:'pointer' }}>
+                Lembrar-me neste dispositivo
+              </label>
+            </div>
+          )}
+          <Btn type="submit" variant="primary" disabled={loading} style={{ width:'100%', justifyContent:'center', padding:'11px 0', fontSize:14 }}>
+            {loading ? <LoadingSpinner size={16} color="#fff" /> : modo==='login' ? 'Entrar' : modo==='cadastro' ? 'Criar conta' : 'Enviar link'}
+          </Btn>
+        </form>
+
+        <div style={{ marginTop:18, textAlign:'center', fontSize:13, color:'var(--c-text-muted)', display:'flex', flexDirection:'column', gap:8 }}>
+          {modo==='login' && (
+            <>
+              <button onClick={()=>{setModo('reset');setErro('');setSucesso('');}} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--c-primary)', fontSize:13, fontFamily:'inherit' }}>Esqueci minha senha</button>
+              <span>Não tem conta? <button onClick={()=>{setModo('cadastro');setErro('');setSucesso('');}} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--c-primary)', fontSize:13, fontFamily:'inherit', fontWeight:600 }}>Criar conta grátis</button></span>
+            </>
+          )}
+          {(modo==='cadastro' || modo==='reset') && (
+            <button onClick={()=>{setModo('login');setErro('');setSucesso('');}} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--c-primary)', fontSize:13, fontFamily:'inherit' }}>← Voltar para o login</button>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
