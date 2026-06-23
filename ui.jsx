@@ -621,4 +621,4 @@ function imprimirPDF(htmlStr, title = 'Documento') {
   win.document.close();
 }
 
-Object.assign(window, { Icon, Btn, Badge, Card, KPI, Modal, Field, Input, CustomSelect, Textarea, BarChart, DonutChart, LineChart, Legend, EmptyState, ToastProvider, useToast, useIsMobile, Validacao, maskCNPJ, maskTelefone, maskCEP, maskMoeda, ModalConfirmacao, LoadingSpinner, imprimirPDF, Toggle });
+Object.assign(window, { Icon, Btn, Badge, Card, KPI, Modal, Field, Input, CustomSelect, Textarea, BarChart, DonutChart, LineChart, Legend, EmptyState, ToastProvider, useToast, useIsMobile, Validacao, maskCNPJ, maskTelefone, maskCEP, maskMoeda, ModalConfirmacao, LoadingSpinner, imprimirPDF });

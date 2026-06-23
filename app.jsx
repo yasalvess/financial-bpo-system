@@ -486,6 +486,7 @@ function App() {
           {route.view === 'relatorios' && <RelatoriosConsolidados data={data} />}
           {route.view === 'configuracoes' && (
             <Configuracoes
+              data={data}
               session={session}
               perfil={perfil}
               onUpdatePerfil={setPerfil}
@@ -495,9 +496,12 @@ function App() {
               portadores={data.portadores || []}
               centrosCusto={data.centrosCusto || []}
               formasPagamento={data.formasPagamento || []}
-              onUpdatePortadores={(novos) => setData(d => ({...d, portadores: novos}))}
-              onUpdateCentros={(novos) => setData(d => ({...d, centrosCusto: novos}))}
-              onUpdateFormas={(novos) => setData(d => ({...d, formasPagamento: novos}))}
+              onSavePortador={savePortador}
+              onDeletePortador={deletePortador}
+              onSaveCentro={saveCentro}
+              onDeleteCentro={deleteCentro}
+              onSaveForma={saveForma}
+              onDeleteForma={deleteForma}
               tweaks={t}
               setTweak={setTweak}
               colorOptions={COLOR_OPTIONS}

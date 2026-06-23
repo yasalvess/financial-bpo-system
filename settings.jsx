@@ -26,7 +26,9 @@ function Configuracoes(props) {
   const {
     initialTab, session, perfil, onUpdatePerfil, empresaInfo, onUpdateEmpresaInfo,
     portadores = [], centrosCusto = [], formasPagamento = [],
-    onUpdatePortadores, onUpdateCentros, onUpdateFormas,
+    onSavePortador, onDeletePortador,
+    onSaveCentro, onDeleteCentro,
+    onSaveForma, onDeleteForma,
     tweaks, setTweak, colorOptions, fontOptions, data,
   } = props;
   const [aba, setAba] = useState_S(initialTab || 'perfil');

@@ -132,7 +132,7 @@ function LancamentosGlobais({ data, onOpenEmpresa, onUpsertLanc, onGoCentral }) 
           onClose={() => setNovoLanc(null)} 
           onSave={async (l) => {
             const finalLanc = { id: uid('lanc'), ...l, pago: false };
-            await onUpsertLanc(finalLanc.empresaId, finalLanc);
+            await onUpsertLanc(finalLanc);
             setNovoLanc(null);
             toast.push('Lançamento salvo com sucesso!');
           }} 
