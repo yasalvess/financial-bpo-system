@@ -1,0 +1,7 @@
+{
+  "devDependencies": {
+    "acorn": "^8.17.0",
+    "acorn-jsx": "^5.3.2",
+    "puppeteer": "^25.2.0"
+  }
+}

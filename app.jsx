@@ -280,51 +280,68 @@ function App() {
   }
 
   async function upsertLanc(l) {
+    // Payload SOMENTE com campos que existem no banco (snake_case)
     const payload = {
       user_id: session.user.id,
       empresa_id: l.empresaId,
-      tipo: l.tipo, descricao: l.descricao,
-      valor: parseFloat(l.valor),
-      vencimento: l.vencimento, competencia: l.competencia,
+      tipo: l.tipo,
+      descricao: l.descricao,
+      valor: parseFloat(String(l.valor).replace(',', '.')) || 0,
+      vencimento: l.vencimento,  // string "YYYY-MM-DD"
+      competencia: l.competencia || competenciaFromDate(l.vencimento),
       portador_id: l.portadorId || null,
       centro_custo_id: l.centroCustoId || null,
-      forma_pagamento: l.formaPagamento,
-      pago: l.pago || false,
+      forma_pagamento: l.formaPagamento || null,
+      pago: Boolean(l.pago),
       pagamento_data: l.pagamento?.data || null,
       pagamento_comprovante: l.pagamento?.comprovante || null,
       observacao: l.observacao || ''
-    };
-
-    let result;
-    const existe = (data.lancamentos[l.empresaId] || []).some(x => x.id === l.id);
-    
-    if (existe) {
-      result = await window.supabaseClient.from('lancamentos')
-        .update({ ...payload, updated_at: new Date().toISOString() })
-        .eq('id', l.id).select().single();
-    } else {
-      result = await window.supabaseClient.from('lancamentos')
-        .insert(payload).select().single();
+      // NÃO incluir: id, empresaId, portadorId, centroCustoId (camelCase)
     }
 
-    if (result.error) { toast.push('Erro ao salvar lançamento', 'error'); return; }
-    
-    const ln = result.data;
+    const cur = data.lancamentos[l.empresaId] || []
+    const existe = cur.some(x => x.id === l.id)
+
+    let result
+    if (existe) {
+      result = await window.supabaseClient
+        .from('lancamentos')
+        .update({ ...payload, updated_at: new Date().toISOString() })
+        .eq('id', l.id)
+        .select()
+        .single()
+    } else {
+      result = await window.supabaseClient
+        .from('lancamentos')
+        .insert(payload)
+        .select()
+        .single()
+    }
+
+    if (result.error) {
+      console.error('Erro Supabase:', result.error)
+      toast.push('Erro ao salvar lançamento: ' + result.error.message, 'error')
+      return
+    }
+
     const lancNorm = {
-      id: ln.id, empresaId: ln.empresa_id, tipo: ln.tipo,
-      descricao: ln.descricao, valor: parseFloat(ln.valor),
-      vencimento: ln.vencimento, competencia: ln.competencia,
-      portadorId: ln.portador_id, centroCustoId: ln.centro_custo_id,
-      formaPagamento: ln.forma_pagamento, pago: ln.pago,
-      pagamento: ln.pago ? { data: ln.pagamento_data, comprovante: ln.pagamento_comprovante } : null,
-      observacao: ln.observacao
+      id: result.data.id, empresaId: result.data.empresa_id, tipo: result.data.tipo,
+      descricao: result.data.descricao, valor: parseFloat(result.data.valor),
+      vencimento: result.data.vencimento, competencia: result.data.competencia,
+      portadorId: result.data.portador_id, centroCustoId: result.data.centro_custo_id,
+      formaPagamento: result.data.forma_pagamento, pago: result.data.pago,
+      pagamento: result.data.pago ? { data: result.data.pagamento_data, comprovante: result.data.pagamento_comprovante } : null,
+      observacao: result.data.observacao
     };
 
     setData(d => {
-      const cur = d.lancamentos[l.empresaId] || [];
-      const novo = existe ? cur.map(x => x.id === lancNorm.id ? lancNorm : x) : [...cur, lancNorm];
-      return { ...d, lancamentos: { ...d.lancamentos, [l.empresaId]: novo } };
-    });
+      const current = d.lancamentos[l.empresaId] || []
+      const novo = existe
+        ? current.map(x => x.id === lancNorm.id ? lancNorm : x)
+        : [...current, lancNorm]
+      return { ...d, lancamentos: { ...d.lancamentos, [l.empresaId]: novo } }
+    })
+    toast.push(existe ? 'Lançamento atualizado!' : 'Lançamento criado!')
 
     // Invoca edge function se for lançamento novo
     if (!existe) {
@@ -465,26 +482,22 @@ function App() {
               onPayLanc={(lancId, payload) => payLanc(currentEmpresa.id, lancId, payload)}
             />
           )}
-          {route.view === 'lancamentos' && <LancamentosGlobais data={data} onOpenEmpresa={(id) => setRoute({ view: 'empresa', id })} />}
+          {route.view === 'lancamentos' && <LancamentosGlobais data={data} onOpenEmpresa={(id) => setRoute({ view: 'empresa', id })} onUpsertLanc={upsertLanc} onGoCentral={() => setRoute({ view: 'central' })} />}
           {route.view === 'relatorios' && <RelatoriosConsolidados data={data} />}
           {route.view === 'configuracoes' && (
             <Configuracoes
-              data={data}
-              initialTab={route.tab}
               session={session}
               perfil={perfil}
-              onUpdatePerfil={(novo) => setPerfil(p => ({ ...p, ...novo }))}
+              onUpdatePerfil={setPerfil}
+              initialTab={route.tab}
               empresaInfo={empresaInfo}
               onUpdateEmpresaInfo={(novo) => setEmpresaInfo(p => ({ ...p, ...novo }))}
-              portadores={data.portadores}
-              centrosCusto={data.centrosCusto}
-              formasPagamento={data.formasPagamento}
-              onSavePortador={savePortador}
-              onDeletePortador={deletePortador}
-              onSaveCentro={saveCentro}
-              onDeleteCentro={deleteCentro}
-              onSaveForma={saveForma}
-              onDeleteForma={deleteForma}
+              portadores={data.portadores || []}
+              centrosCusto={data.centrosCusto || []}
+              formasPagamento={data.formasPagamento || []}
+              onUpdatePortadores={(novos) => setData(d => ({...d, portadores: novos}))}
+              onUpdateCentros={(novos) => setData(d => ({...d, centrosCusto: novos}))}
+              onUpdateFormas={(novos) => setData(d => ({...d, formasPagamento: novos}))}
               tweaks={t}
               setTweak={setTweak}
               colorOptions={COLOR_OPTIONS}
@@ -770,7 +783,7 @@ function TopBar({ breadcrumb, isMobile, onMenuClick, onSearchClick, notifCount, 
               ? <img src={perfil.foto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               : <span style={{ fontWeight: 700, fontSize: 13 }}>{perfil?.inicial || (perfil?.nome || 'K').charAt(0)}</span>}
           </button>
-          {perfilOpen && <DropdownPerfil perfil={perfil} session={session} onNavegar={aba => onOpenSettings(aba)} onLogout={async () => { await window.supabaseClient.auth.signOut(); window.location.reload(); }} />}
+          {perfilOpen && <PerfilDropdown perfil={perfil} onOpenSettings={onOpenSettings} />}
         </div>
       </div>
     </header>
@@ -1103,6 +1116,7 @@ function SearchOverlay({ open, onClose, data, onSelectEmpresa, onNewEmpresa }) {
 
 const kbdStyle = { fontSize: 10, color: 'var(--c-text-muted)', background: 'var(--c-surface)', padding: '1px 5px', borderRadius: 4, border: '1px solid var(--c-border)', fontFamily: 'ui-monospace, monospace', marginRight: 4 };
 
+window.stringToColor = stringToColor;
 function stringToColor(s) {
   const palette = [
     { bg: '#dbeafe', fg: '#1e40af' }, { bg: '#fce7f3', fg: '#9d174d' },
@@ -1125,6 +1139,7 @@ function EmpresaWizard({ empresa, todasEmpresas, portadores, centrosCusto, onClo
     criadaEm: todayISO()
   });
   const [erros, setErros] = useState_A({});
+  const toast = useToast();
 
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
   
@@ -1143,11 +1158,20 @@ function EmpresaWizard({ empresa, todasEmpresas, portadores, centrosCusto, onClo
     }
 
     const errEmail = f.email ? Validacao.email(f.email) : null;
+    const errTelefone = f.telefone ? Validacao.telefone(f.telefone) : null;
+
     if (errNome) e.nome = errNome;
     if (errCNPJ) e.cnpj = errCNPJ;
     if (errEmail) e.email = errEmail;
-    setErros(e);
-    return Object.keys(e).length === 0;
+    if (errTelefone) e.telefone = errTelefone;
+
+    if (Object.keys(e).length > 0) {
+      setErros(e);
+      Object.values(e).forEach(msg => toast.push(msg, 'error'));
+      return false;
+    }
+    setErros({});
+    return true;
   }
 
   function proceedToStep2() {
@@ -1366,16 +1390,28 @@ function TelaResetSenha() {
   const [loading, setLoading] = useState_A(false);
   const [erro, setErro] = useState_A('');
   const [sucesso, setSucesso] = useState_A(false);
+  const toast = useToast();
 
   async function salvar(e) {
     e.preventDefault();
-    if (novaSenha.length < 6) { setErro('Senha deve ter pelo menos 6 caracteres'); return; }
-    if (novaSenha !== confirmar) { setErro('As senhas não coincidem'); return; }
+    const errSenha = Validacao.senha(novaSenha);
+    if (errSenha) { setErro(errSenha); toast.push(errSenha, 'error'); return; }
+    if (novaSenha !== confirmar) {
+      const msg = 'As senhas não coincidem';
+      setErro(msg);
+      toast.push(msg, 'error');
+      return;
+    }
     setLoading(true); setErro('');
     const { error } = await window.supabaseClient.auth.updateUser({ password: novaSenha });
-    if (error) { setErro('Erro ao redefinir senha: ' + error.message); }
+    if (error) {
+      const msg = 'Erro ao redefinir senha: ' + error.message;
+      setErro(msg);
+      toast.push(msg, 'error');
+    }
     else {
       setSucesso(true);
+      toast.push('Senha redefinida com sucesso!');
       setTimeout(() => window.history.replaceState({}, '', window.location.pathname), 2000);
     }
     setLoading(false);
@@ -1429,12 +1465,12 @@ function LoginScreen({ emailConfirmado }) {
   const [modo, setModo] = useState_A('login');
   const [email, setEmail] = useState_A('');
   const [senha, setSenha] = useState_A('');
-  const [nome, setNome] = useState_A('');
   const [lembrar, setLembrar] = useState_A(true);
   const [loading, setLoading] = useState_A(false);
   const [erro, setErro] = useState_A('');
   const [erroEspecial, setErroEspecial] = useState_A('');
   const [sucesso, setSucesso] = useState_A('');
+  const toast = useToast();
 
   useEffect_A(() => {
     if (emailConfirmado) setSucesso('E-mail confirmado com sucesso! Você já pode entrar.');
@@ -1444,14 +1480,16 @@ function LoginScreen({ emailConfirmado }) {
     e.preventDefault();
     setErro(''); setErroEspecial(''); setLoading(true);
     const errEmail = Validacao.email(email);
-    if (errEmail) { setErro(errEmail); setLoading(false); return; }
+    if (errEmail) { setErro(errEmail); toast.push(errEmail, 'error'); setLoading(false); return; }
 
     const { error } = await window.supabaseClient.auth.signInWithPassword({ email, password: senha });
     if (error) {
       if (error.message.includes('Email not confirmed')) {
         setErroEspecial('email_nao_confirmado');
       } else {
-        setErro(traduzirErroAuth(error.message));
+        const tr = traduzirErroAuth(error.message);
+        setErro(tr);
+        toast.push(tr, 'error');
       }
     } else {
       if (!lembrar) {
@@ -1467,37 +1505,28 @@ function LoginScreen({ emailConfirmado }) {
 
   async function reenviarConfirmacao() {
     const { error } = await window.supabaseClient.auth.resend({ type: 'signup', email });
-    if (!error) alert('E-mail reenviado! Verifique sua caixa de entrada.');
-    else alert('Erro ao reenviar e-mail.');
-  }
-
-  async function handleCadastro(e) {
-    e.preventDefault();
-    setErro(''); setLoading(true);
-    const errEmail = Validacao.email(email);
-    if (errEmail) { setErro(errEmail); setLoading(false); return; }
-    if (!nome.trim()) { setErro('Nome é obrigatório'); setLoading(false); return; }
-
-    const { error } = await window.supabaseClient.auth.signUp({
-      email, password: senha,
-      options: { data: { nome } }
-    });
-    if (error) setErro(traduzirErroAuth(error.message));
-    else setSucesso('Conta criada! Verifique seu e-mail para confirmar.');
-    setLoading(false);
+    if (!error) toast.push('E-mail reenviado! Verifique sua caixa de entrada.');
+    else toast.push('Erro ao reenviar e-mail.', 'error');
   }
 
   async function handleReset(e) {
     e.preventDefault();
     setErro(''); setLoading(true);
     const errEmail = Validacao.email(email);
-    if (errEmail) { setErro(errEmail); setLoading(false); return; }
+    if (errEmail) { setErro(errEmail); toast.push(errEmail, 'error'); setLoading(false); return; }
 
     const { error } = await window.supabaseClient.auth.resetPasswordForEmail(email, {
       redirectTo: window.location.origin
     });
-    if (error) setErro(traduzirErroAuth(error.message));
-    else setSucesso('E-mail de recuperação enviado! Verifique sua caixa de entrada.');
+    if (error) {
+      const tr = traduzirErroAuth(error.message);
+      setErro(tr);
+      toast.push(tr, 'error');
+    }
+    else {
+      toast.push('E-mail de recuperação enviado! Verifique sua caixa de entrada.');
+      setSucesso('E-mail de recuperação enviado! Verifique sua caixa de entrada.');
+    }
     setLoading(false);
   }
 
@@ -1520,10 +1549,10 @@ function LoginScreen({ emailConfirmado }) {
 
         <div style={{ marginBottom:20 }}>
           <h2 style={{ fontSize:18, fontWeight:600, margin:'0 0 4px' }}>
-            {modo==='login' ? 'Entrar na conta' : modo==='cadastro' ? 'Criar conta' : 'Recuperar senha'}
+            {modo==='login' ? 'Entrar na conta' : 'Recuperar senha'}
           </h2>
           <p style={{ fontSize:13, color:'var(--c-text-muted)', margin:0 }}>
-            {modo==='login' ? 'Acesse o painel de gestão' : modo==='cadastro' ? 'Preencha os dados para começar' : 'Enviaremos um link para seu e-mail'}
+            {modo==='login' ? 'Acesse o painel de gestão' : 'Enviaremos um link para seu e-mail'}
           </p>
         </div>
 
@@ -1545,46 +1574,38 @@ function LoginScreen({ emailConfirmado }) {
           </div>
         )}
 
-        <form onSubmit={modo==='login' ? handleLogin : modo==='cadastro' ? handleCadastro : handleReset} style={{ display:'flex', flexDirection:'column', gap:14 }}>
-          {modo==='cadastro' && (
-            <Field label="Nome completo" required>
-              <Input value={nome} onChange={e=>setNome(e.target.value)} placeholder="Seu nome" autoFocus />
-            </Field>
-          )}
+        <form onSubmit={modo==='login' ? handleLogin : handleReset} style={{ display:'flex', flexDirection:'column', gap:14 }}>
           <Field label="E-mail" required>
-            <Input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="seu@email.com" autoFocus={modo!=='cadastro'} />
+            <Input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="seu@email.com" autoFocus />
           </Field>
-          {modo !== 'reset' && (
+          {modo === 'login' && (
             <Field label="Senha" required>
               <Input type="password" value={senha} onChange={e=>setSenha(e.target.value)} placeholder="••••••••" />
             </Field>
           )}
           {modo === 'login' && (
-            <div style={{ display:'flex', alignItems:'center', gap:8, margin:'4px 0' }}>
-              <input type="checkbox" id="lembrar" checked={lembrar}
-                onChange={e => setLembrar(e.target.checked)}
-                style={{ width:15, height:15, accentColor:'var(--c-primary)', cursor:'pointer' }} />
-              <label htmlFor="lembrar" style={{ fontSize:13, color:'var(--c-text-muted)', cursor:'pointer' }}>
-                Lembrar-me neste dispositivo
-              </label>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, margin:'4px 0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input type="checkbox" id="lembrar" checked={lembrar}
+                  onChange={e => setLembrar(e.target.checked)}
+                  style={{ width:15, height:15, accentColor:'var(--c-primary)', cursor:'pointer' }} />
+                <label htmlFor="lembrar" style={{ fontSize:13, color:'var(--c-text-muted)', cursor:'pointer' }}>
+                  Lembrar-me
+                </label>
+              </div>
+              <button type="button" onClick={() => { setModo('recuperar'); setErro(''); setSucesso(''); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-primary)', fontSize: 13, fontFamily: 'inherit', fontWeight: 500 }}>Esqueceu a senha?</button>
             </div>
           )}
           <Btn type="submit" variant="primary" disabled={loading} style={{ width:'100%', justifyContent:'center', padding:'11px 0', fontSize:14 }}>
-            {loading ? <LoadingSpinner size={16} color="#fff" /> : modo==='login' ? 'Entrar' : modo==='cadastro' ? 'Criar conta' : 'Enviar link'}
+            {loading ? <LoadingSpinner size={16} color="#fff" /> : modo==='login' ? 'Entrar' : 'Enviar link'}
           </Btn>
         </form>
 
-        <div style={{ marginTop:18, textAlign:'center', fontSize:13, color:'var(--c-text-muted)', display:'flex', flexDirection:'column', gap:8 }}>
-          {modo==='login' && (
-            <>
-              <button onClick={()=>{setModo('reset');setErro('');setSucesso('');}} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--c-primary)', fontSize:13, fontFamily:'inherit' }}>Esqueci minha senha</button>
-              <span>Não tem conta? <button onClick={()=>{setModo('cadastro');setErro('');setSucesso('');}} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--c-primary)', fontSize:13, fontFamily:'inherit', fontWeight:600 }}>Criar conta grátis</button></span>
-            </>
-          )}
-          {(modo==='cadastro' || modo==='reset') && (
+        {modo === 'recuperar' && (
+          <div style={{ marginTop: 18, textAlign: 'center' }}>
             <button onClick={()=>{setModo('login');setErro('');setSucesso('');}} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--c-primary)', fontSize:13, fontFamily:'inherit' }}>← Voltar para o login</button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

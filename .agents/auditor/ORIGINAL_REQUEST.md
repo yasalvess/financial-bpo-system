@@ -1,0 +1,4 @@
+## 2026-06-23T01:00:39Z
+You are the Forensic Auditor.
+Your working directory is c:\Users\Yasmin\OneDrive\Documentos\financial-bpo-system\.agents\auditor.
+Your task is to perform an integrity audit of the system. Verify that all implementations (RLS security, form validations, UI elements, calendar dropdowns) are genuine and that no hardcoding of test results or dummy/facade implementations exist. Conduct systematic checks (static analysis, verify files, trace code paths, check database schema policies). Provide a structured handoff report handoff.md detailing your findings, evidence, and your audit verdict (CLEAN/INTEGRITY VIOLATION). If any cheating is detected, specify the exact files and lines. When done, call send_message to report your findings to the parent orchestrator (conversation ID: 537f1403-d660-4159-b343-bc4ea82cf658).

@@ -1,0 +1,1166 @@
+﻿diff --git a/app.jsx b/app.jsx
+index 7bb0a23..6867fb5 100644
+--- a/app.jsx
++++ b/app.jsx
+@@ -770,7 +770,7 @@ function TopBar({ breadcrumb, isMobile, onMenuClick, onSearchClick, notifCount,
+               ? <img src={perfil.foto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+               : <span style={{ fontWeight: 700, fontSize: 13 }}>{perfil?.inicial || (perfil?.nome || 'K').charAt(0)}</span>}
+           </button>
+-          {perfilOpen && <DropdownPerfil perfil={perfil} session={session} onNavegar={aba => onOpenSettings(aba)} onLogout={async () => { await window.supabaseClient.auth.signOut(); window.location.reload(); }} />}
++          {perfilOpen && <PerfilDropdown perfil={perfil} onOpenSettings={onOpenSettings} />}
+         </div>
+       </div>
+     </header>
+@@ -1125,6 +1125,7 @@ function EmpresaWizard({ empresa, todasEmpresas, portadores, centrosCusto, onClo
+     criadaEm: todayISO()
+   });
+   const [erros, setErros] = useState_A({});
++  const toast = useToast();
+ 
+   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+   
+@@ -1143,11 +1144,20 @@ function EmpresaWizard({ empresa, todasEmpresas, portadores, centrosCusto, onClo
+     }
+ 
+     const errEmail = f.email ? Validacao.email(f.email) : null;
++    const errTelefone = f.telefone ? Validacao.telefone(f.telefone) : null;
++
+     if (errNome) e.nome = errNome;
+     if (errCNPJ) e.cnpj = errCNPJ;
+     if (errEmail) e.email = errEmail;
+-    setErros(e);
+-    return Object.keys(e).length === 0;
++    if (errTelefone) e.telefone = errTelefone;
++
++    if (Object.keys(e).length > 0) {
++      setErros(e);
++      Object.values(e).forEach(msg => toast.push(msg, 'error'));
++      return false;
++    }
++    setErros({});
++    return true;
+   }
+ 
+   function proceedToStep2() {
+@@ -1366,16 +1376,28 @@ function TelaResetSenha() {
+   const [loading, setLoading] = useState_A(false);
+   const [erro, setErro] = useState_A('');
+   const [sucesso, setSucesso] = useState_A(false);
++  const toast = useToast();
+ 
+   async function salvar(e) {
+     e.preventDefault();
+-    if (novaSenha.length < 6) { setErro('Senha deve ter pelo menos 6 caracteres'); return; }
+-    if (novaSenha !== confirmar) { setErro('As senhas n├úo coincidem'); return; }
++    const errSenha = Validacao.senha(novaSenha);
++    if (errSenha) { setErro(errSenha); toast.push(errSenha, 'error'); return; }
++    if (novaSenha !== confirmar) {
++      const msg = 'As senhas n├úo coincidem';
++      setErro(msg);
++      toast.push(msg, 'error');
++      return;
++    }
+     setLoading(true); setErro('');
+     const { error } = await window.supabaseClient.auth.updateUser({ password: novaSenha });
+-    if (error) { setErro('Erro ao redefinir senha: ' + error.message); }
++    if (error) {
++      const msg = 'Erro ao redefinir senha: ' + error.message;
++      setErro(msg);
++      toast.push(msg, 'error');
++    }
+     else {
+       setSucesso(true);
++      toast.push('Senha redefinida com sucesso!');
+       setTimeout(() => window.history.replaceState({}, '', window.location.pathname), 2000);
+     }
+     setLoading(false);
+@@ -1429,12 +1451,12 @@ function LoginScreen({ emailConfirmado }) {
+   const [modo, setModo] = useState_A('login');
+   const [email, setEmail] = useState_A('');
+   const [senha, setSenha] = useState_A('');
+-  const [nome, setNome] = useState_A('');
+   const [lembrar, setLembrar] = useState_A(true);
+   const [loading, setLoading] = useState_A(false);
+   const [erro, setErro] = useState_A('');
+   const [erroEspecial, setErroEspecial] = useState_A('');
+   const [sucesso, setSucesso] = useState_A('');
++  const toast = useToast();
+ 
+   useEffect_A(() => {
+     if (emailConfirmado) setSucesso('E-mail confirmado com sucesso! Voc├¬ j├í pode entrar.');
+@@ -1444,14 +1466,16 @@ function LoginScreen({ emailConfirmado }) {
+     e.preventDefault();
+     setErro(''); setErroEspecial(''); setLoading(true);
+     const errEmail = Validacao.email(email);
+-    if (errEmail) { setErro(errEmail); setLoading(false); return; }
++    if (errEmail) { setErro(errEmail); toast.push(errEmail, 'error'); setLoading(false); return; }
+ 
+     const { error } = await window.supabaseClient.auth.signInWithPassword({ email, password: senha });
+     if (error) {
+       if (error.message.includes('Email not confirmed')) {
+         setErroEspecial('email_nao_confirmado');
+       } else {
+-        setErro(traduzirErroAuth(error.message));
++        const tr = traduzirErroAuth(error.message);
++        setErro(tr);
++        toast.push(tr, 'error');
+       }
+     } else {
+       if (!lembrar) {
+@@ -1467,37 +1491,28 @@ function LoginScreen({ emailConfirmado }) {
+ 
+   async function reenviarConfirmacao() {
+     const { error } = await window.supabaseClient.auth.resend({ type: 'signup', email });
+-    if (!error) alert('E-mail reenviado! Verifique sua caixa de entrada.');
+-    else alert('Erro ao reenviar e-mail.');
+-  }
+-
+-  async function handleCadastro(e) {
+-    e.preventDefault();
+-    setErro(''); setLoading(true);
+-    const errEmail = Validacao.email(email);
+-    if (errEmail) { setErro(errEmail); setLoading(false); return; }
+-    if (!nome.trim()) { setErro('Nome ├® obrigat├│rio'); setLoading(false); return; }
+-
+-    const { error } = await window.supabaseClient.auth.signUp({
+-      email, password: senha,
+-      options: { data: { nome } }
+-    });
+-    if (error) setErro(traduzirErroAuth(error.message));
+-    else setSucesso('Conta criada! Verifique seu e-mail para confirmar.');
+-    setLoading(false);
++    if (!error) toast.push('E-mail reenviado! Verifique sua caixa de entrada.');
++    else toast.push('Erro ao reenviar e-mail.', 'error');
+   }
+ 
+   async function handleReset(e) {
+     e.preventDefault();
+     setErro(''); setLoading(true);
+     const errEmail = Validacao.email(email);
+-    if (errEmail) { setErro(errEmail); setLoading(false); return; }
++    if (errEmail) { setErro(errEmail); toast.push(errEmail, 'error'); setLoading(false); return; }
+ 
+     const { error } = await window.supabaseClient.auth.resetPasswordForEmail(email, {
+       redirectTo: window.location.origin
+     });
+-    if (error) setErro(traduzirErroAuth(error.message));
+-    else setSucesso('E-mail de recupera├º├úo enviado! Verifique sua caixa de entrada.');
++    if (error) {
++      const tr = traduzirErroAuth(error.message);
++      setErro(tr);
++      toast.push(tr, 'error');
++    }
++    else {
++      toast.push('E-mail de recupera├º├úo enviado! Verifique sua caixa de entrada.');
++      setSucesso('E-mail de recupera├º├úo enviado! Verifique sua caixa de entrada.');
++    }
+     setLoading(false);
+   }
+ 
+@@ -1520,10 +1535,10 @@ function LoginScreen({ emailConfirmado }) {
+ 
+         <div style={{ marginBottom:20 }}>
+           <h2 style={{ fontSize:18, fontWeight:600, margin:'0 0 4px' }}>
+-            {modo==='login' ? 'Entrar na conta' : modo==='cadastro' ? 'Criar conta' : 'Recuperar senha'}
++            {modo==='login' ? 'Entrar na conta' : 'Recuperar senha'}
+           </h2>
+           <p style={{ fontSize:13, color:'var(--c-text-muted)', margin:0 }}>
+-            {modo==='login' ? 'Acesse o painel de gest├úo' : modo==='cadastro' ? 'Preencha os dados para come├ºar' : 'Enviaremos um link para seu e-mail'}
++            {modo==='login' ? 'Acesse o painel de gest├úo' : 'Enviaremos um link para seu e-mail'}
+           </p>
+         </div>
+ 
+@@ -1545,46 +1560,38 @@ function LoginScreen({ emailConfirmado }) {
+           </div>
+         )}
+ 
+-        <form onSubmit={modo==='login' ? handleLogin : modo==='cadastro' ? handleCadastro : handleReset} style={{ display:'flex', flexDirection:'column', gap:14 }}>
+-          {modo==='cadastro' && (
+-            <Field label="Nome completo" required>
+-              <Input value={nome} onChange={e=>setNome(e.target.value)} placeholder="Seu nome" autoFocus />
+-            </Field>
+-          )}
++        <form onSubmit={modo==='login' ? handleLogin : handleReset} style={{ display:'flex', flexDirection:'column', gap:14 }}>
+           <Field label="E-mail" required>
+-            <Input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="seu@email.com" autoFocus={modo!=='cadastro'} />
++            <Input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="seu@email.com" autoFocus />
+           </Field>
+-          {modo !== 'reset' && (
++          {modo === 'login' && (
+             <Field label="Senha" required>
+               <Input type="password" value={senha} onChange={e=>setSenha(e.target.value)} placeholder="ÔÇóÔÇóÔÇóÔÇóÔÇóÔÇóÔÇóÔÇó" />
+             </Field>
+           )}
+           {modo === 'login' && (
+-            <div style={{ display:'flex', alignItems:'center', gap:8, margin:'4px 0' }}>
+-              <input type="checkbox" id="lembrar" checked={lembrar}
+-                onChange={e => setLembrar(e.target.checked)}
+-                style={{ width:15, height:15, accentColor:'var(--c-primary)', cursor:'pointer' }} />
+-              <label htmlFor="lembrar" style={{ fontSize:13, color:'var(--c-text-muted)', cursor:'pointer' }}>
+-                Lembrar-me neste dispositivo
+-              </label>
++            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, margin:'4px 0' }}>
++              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
++                <input type="checkbox" id="lembrar" checked={lembrar}
++                  onChange={e => setLembrar(e.target.checked)}
++                  style={{ width:15, height:15, accentColor:'var(--c-primary)', cursor:'pointer' }} />
++                <label htmlFor="lembrar" style={{ fontSize:13, color:'var(--c-text-muted)', cursor:'pointer' }}>
++                  Lembrar-me
++                </label>
++              </div>
++              <button type="button" onClick={() => { setModo('recuperar'); setErro(''); setSucesso(''); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-primary)', fontSize: 13, fontFamily: 'inherit', fontWeight: 500 }}>Esqueceu a senha?</button>
+             </div>
+           )}
+           <Btn type="submit" variant="primary" disabled={loading} style={{ width:'100%', justifyContent:'center', padding:'11px 0', fontSize:14 }}>
+-            {loading ? <LoadingSpinner size={16} color="#fff" /> : modo==='login' ? 'Entrar' : modo==='cadastro' ? 'Criar conta' : 'Enviar link'}
++            {loading ? <LoadingSpinner size={16} color="#fff" /> : modo==='login' ? 'Entrar' : 'Enviar link'}
+           </Btn>
+         </form>
+ 
+-        <div style={{ marginTop:18, textAlign:'center', fontSize:13, color:'var(--c-text-muted)', display:'flex', flexDirection:'column', gap:8 }}>
+-          {modo==='login' && (
+-            <>
+-              <button onClick={()=>{setModo('reset');setErro('');setSucesso('');}} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--c-primary)', fontSize:13, fontFamily:'inherit' }}>Esqueci minha senha</button>
+-              <span>N├úo tem conta? <button onClick={()=>{setModo('cadastro');setErro('');setSucesso('');}} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--c-primary)', fontSize:13, fontFamily:'inherit', fontWeight:600 }}>Criar conta gr├ítis</button></span>
+-            </>
+-          )}
+-          {(modo==='cadastro' || modo==='reset') && (
++        {modo === 'recuperar' && (
++          <div style={{ marginTop: 18, textAlign: 'center' }}>
+             <button onClick={()=>{setModo('login');setErro('');setSucesso('');}} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--c-primary)', fontSize:13, fontFamily:'inherit' }}>ÔåÉ Voltar para o login</button>
+-          )}
+-        </div>
++          </div>
++        )}
+       </div>
+     </div>
+   );
+diff --git a/central.jsx b/central.jsx
+index 7093484..213532f 100644
+--- a/central.jsx
++++ b/central.jsx
+@@ -4,7 +4,6 @@ const { useState: useState_C, useMemo: useMemo_C } = React;
+ function CentralGestao({ data, onOpenEmpresa, onCreateEmpresa, onDeleteEmpresa, onEditEmpresa }) {
+   const [busca, setBusca] = useState_C('');
+   const [filtroStatus, setFiltroStatus] = useState_C('todos');
+-  const [modalEmp, setModalEmp] = useState_C(null); // {empresa} ou {new:true}
+   const [view, setView] = useState_C('cards'); // cards | tabela
+   const [dashFiltros, setDashFiltros] = useState_C({
+     periodo: '6m',      // '1m' | '3m' | '6m' | '12m' | 'custom'
+@@ -113,7 +112,7 @@ function CentralGestao({ data, onOpenEmpresa, onCreateEmpresa, onDeleteEmpresa,
+           <Btn variant="secondary" icon="download" onClick={() => exportConsolidadoXLSX(data.empresas, data.lancamentos, data.portadores, data.centrosCusto)}>
+             Exportar Consolidado
+           </Btn>
+-          <Btn variant="primary" icon="plus" onClick={() => setModalEmp({ new: true })}>Nova Empresa</Btn>
++          <Btn variant="primary" icon="plus" onClick={() => onCreateEmpresa()}>Nova Empresa</Btn>
+         </div>
+       </div>
+ 
+@@ -233,7 +232,7 @@ function CentralGestao({ data, onOpenEmpresa, onCreateEmpresa, onDeleteEmpresa,
+       {/* Grade de empresas */}
+       {view === 'cards' ? (
+         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
+-          {filtradas.map(e => <EmpresaCard key={e.id} empresa={e} onOpen={() => onOpenEmpresa(e.id)} onEdit={() => setModalEmp({ empresa: e })} />)}
++          {filtradas.map(e => <EmpresaCard key={e.id} empresa={e} onOpen={() => onOpenEmpresa(e.id)} onEdit={() => onEditEmpresa(e)} />)}
+         </div>
+       ) : (
+         <Card padding={0}>
+@@ -273,30 +272,10 @@ function CentralGestao({ data, onOpenEmpresa, onCreateEmpresa, onDeleteEmpresa,
+       {filtradas.length === 0 && (
+         <Card>
+           <EmptyState icon="building" title="Nenhuma empresa encontrada" hint="Tente outros filtros ou cadastre uma nova empresa." action={
+-            <Btn variant="primary" icon="plus" onClick={() => setModalEmp({ new: true })}>Nova Empresa</Btn>
++            <Btn variant="primary" icon="plus" onClick={() => onCreateEmpresa()}>Nova Empresa</Btn>
+           } />
+         </Card>
+       )}
+-
+-      {/* Modal empresa */}
+-      {modalEmp && (
+-        <EmpresaFormModal
+-          empresa={modalEmp.empresa}
+-          onClose={() => setModalEmp(null)}
+-          onSave={(emp) => {
+-            if (modalEmp.new) { onCreateEmpresa(emp); toast.push('Empresa cadastrada com sucesso'); }
+-            else { onEditEmpresa(emp); toast.push('Empresa atualizada'); }
+-            setModalEmp(null);
+-          }}
+-          onDelete={modalEmp.empresa ? () => {
+-            if (confirm(`Excluir "${modalEmp.empresa.nome}"? Todos os lan├ºamentos ser├úo removidos.`)) {
+-              onDeleteEmpresa(modalEmp.empresa.id);
+-              toast.push('Empresa exclu├¡da', 'error');
+-              setModalEmp(null);
+-            }
+-          } : null}
+-        />
+-      )}
+     </div>
+   );
+ }
+@@ -370,47 +349,4 @@ function EmpresaCard({ empresa, onOpen, onEdit }) {
+   );
+ }
+ 
+-function EmpresaFormModal({ empresa, onClose, onSave, onDelete }) {
+-  const [f, setF] = useState_C(empresa || {
+-    id: uid('emp'), nome: '', cnpj: '', segmento: '', responsavel: '', email: '', telefone: '', criadaEm: todayISO()
+-  });
+-  const set = (k, v) => setF(prev => ({ ...prev, [k]: v }));
+-  function submit(e) {
+-    e.preventDefault();
+-    if (!f.nome.trim()) return alert('Nome ├® obrigat├│rio');
+-    onSave(f);
+-  }
+-  return (
+-    <Modal open onClose={onClose} title={empresa ? 'Editar Empresa' : 'Cadastrar Nova Empresa'} width={620}
+-      footer={
+-        <>
+-          {onDelete && <Btn variant="danger" icon="trash" onClick={onDelete} style={{ marginRight: 'auto' }}>Excluir</Btn>}
+-          <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
+-          <Btn variant="primary" onClick={submit}>{empresa ? 'Salvar Altera├º├Áes' : 'Cadastrar Empresa'}</Btn>
+-        </>
+-      }>
+-      <form onSubmit={submit} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+-        <Field label="Raz├úo Social / Nome" required span={2}>
+-          <Input value={f.nome} onChange={e => set('nome', e.target.value)} placeholder="Ex: Padaria Bom P├úo Ltda" autoFocus />
+-        </Field>
+-        <Field label="CNPJ" required>
+-          <Input value={f.cnpj} onChange={e => set('cnpj', e.target.value)} placeholder="00.000.000/0000-00" />
+-        </Field>
+-        <Field label="Segmento">
+-          <Input value={f.segmento} onChange={e => set('segmento', e.target.value)} placeholder="Ex: Alimenta├º├úo" />
+-        </Field>
+-        <Field label="Respons├ível">
+-          <Input value={f.responsavel} onChange={e => set('responsavel', e.target.value)} />
+-        </Field>
+-        <Field label="E-mail">
+-          <Input value={f.email} type="email" onChange={e => set('email', e.target.value)} />
+-        </Field>
+-        <Field label="Telefone" span={2}>
+-          <Input value={f.telefone} onChange={e => set('telefone', e.target.value)} placeholder="(00) 00000-0000" />
+-        </Field>
+-      </form>
+-    </Modal>
+-  );
+-}
+-
+ Object.assign(window, { CentralGestao });
+diff --git a/hooks.jsx b/hooks.jsx
+index 1aaa785..df3250f 100644
+--- a/hooks.jsx
++++ b/hooks.jsx
+@@ -12,10 +12,10 @@ function useAppData(userId) {
+     setData(d => ({ ...d, loading: true, error: null }));
+     try {
+       const [emps, ports, centros, formas] = await Promise.all([
+-        supabaseClient.from('empresas').select('*').eq('user_id', userId).eq('ativo', true).order('nome'),
+-        supabaseClient.from('portadores').select('*').eq('user_id', userId).eq('ativo', true).order('nome'),
+-        supabaseClient.from('centros_custo').select('*').eq('user_id', userId).eq('ativo', true).order('nome'),
+-        supabaseClient.from('formas_pagamento').select('*').eq('user_id', userId).eq('ativo', true).order('ordem'),
++        supabaseClient.from('empresas').select('*').eq('ativo', true).order('nome'),
++        supabaseClient.from('portadores').select('*').eq('ativo', true).order('nome'),
++        supabaseClient.from('centros_custo').select('*').eq('ativo', true).order('nome'),
++        supabaseClient.from('formas_pagamento').select('*').eq('ativo', true).order('ordem'),
+       ]);
+ 
+       const empresas = emps.data || [];
+diff --git a/index.html b/index.html
+index b8b93c9..b1b8ccf 100644
+--- a/index.html
++++ b/index.html
+@@ -68,12 +68,44 @@
+   button { font-family: inherit; }
+   table th, table td { vertical-align: middle; }
+ 
+-  /* Inputs in dark mode */
+   body.dark input, body.dark select, body.dark textarea {
+     background: #1d1d27 !important; color: var(--c-text) !important; border-color: var(--c-border) !important;
+   }
+   body.dark input::placeholder, body.dark textarea::placeholder { color: #6b6f80; }
+ 
++  /* Inputs, select elements, textareas transitions, hover and focus glow styles */
++  input, select, textarea, .custom-select-btn {
++    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
++  }
++  input:hover, select:hover, textarea:hover, .custom-select-btn:hover,
++  body.dark input:hover, body.dark select:hover, body.dark textarea:hover, body.dark .custom-select-btn:hover {
++    border-color: var(--c-primary) !important;
++  }
++  input:focus, select:focus, textarea:focus, .custom-select-btn:focus,
++  body.dark input:focus, body.dark select:focus, body.dark textarea:focus, body.dark .custom-select-btn:focus {
++    border-color: var(--c-primary) !important;
++    box-shadow: 0 0 0 3px var(--c-primary-soft) !important;
++    outline: none !important;
++  }
++
++  /* Native date picker calendar icon cursor & visibility effects */
++  input[type="date"]::-webkit-calendar-picker-indicator {
++    cursor: pointer;
++    opacity: 0.6;
++    transition: opacity 0.15s ease-in-out;
++  }
++  input[type="date"]::-webkit-calendar-picker-indicator:hover {
++    opacity: 1;
++  }
++  body.dark input[type="date"]::-webkit-calendar-picker-indicator {
++    filter: invert(1);
++    opacity: 0.8;
++  }
++  body.dark input[type="date"]::-webkit-calendar-picker-indicator:hover {
++    opacity: 1;
++  }
++
++
+   /* Print styles for comprovante */
+   @media print {
+     body * { visibility: hidden; }
+diff --git a/settings.jsx b/settings.jsx
+index 34b278d..0b32553 100644
+--- a/settings.jsx
++++ b/settings.jsx
+@@ -13,7 +13,7 @@ const ABAS_CONFIG = [
+   { id: 'perfil', label: 'Meu Perfil', icon: 'user' },
+   { id: 'empresa', label: 'Minha Empresa', icon: 'building' },
+   { id: 'seguranca', label: 'Seguran├ºa', icon: 'lock' },
+-  // { id: 'usuarios', label: 'Usu├írios & Acesso', icon: 'users' }, // Removido p/ v2 (Multi-usu├írio n├úo suportado na v1)
++  { id: 'usuarios', icon: 'users', label: 'Usu├írios & Acesso', desc: 'Gerencie permiss├Áes da equipe' },
+   { id: 'portadores', label: 'Portadores', icon: 'bank' },
+   { id: 'centros', label: 'Centros de Custo', icon: 'target' },
+   { id: 'formas', label: 'Formas de Pagamento', icon: 'creditCard' },
+@@ -74,7 +74,7 @@ function Configuracoes(props) {
+           {aba === 'perfil' && <PerfilTab perfil={perfil} onUpdate={onUpdatePerfil} />}
+           {aba === 'empresa' && <EmpresaInfoTab info={empresaInfo} onUpdate={onUpdateEmpresaInfo} />}
+           {aba === 'seguranca' && <AbaSeguranca session={session} />}
+-          {aba === 'usuarios' && <AbaUsuarios session={session} />}
++          {aba === 'usuarios' && <AbaUsuarios session={session} data={data} />}
+           {aba === 'portadores' && <PortadoresConfigTab portadores={portadores} onSave={onSavePortador} onDelete={onDeletePortador} />}
+           {aba === 'centros' && <CentrosConfigTab centros={centrosCusto} onSave={onSaveCentro} onDelete={onDeleteCentro} />}
+           {aba === 'formas' && <FormasConfigTab formas={formasPagamento} onSave={onSaveForma} onDelete={onDeleteForma} />}
+@@ -105,13 +105,23 @@ function PerfilTab({ perfil, onUpdate }) {
+   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+ 
+   function salvar() {
+-    if (!f.nome.trim()) return toast.push('Informe seu nome', 'error');
++    const errNome = Validacao.required(f.nome, 'Nome');
++    if (errNome) return toast.push(errNome, 'error');
++
++    const errEmail = f.email ? Validacao.email(f.email) : null;
++    if (errEmail) return toast.push(errEmail, 'error');
++
++    const errTelefone = f.telefone ? Validacao.telefone(f.telefone) : null;
++    if (errTelefone) return toast.push(errTelefone, 'error');
++
+     if (senhas.nova || senhas.confirmar || senhas.atual) {
++      const errSenha = Validacao.senha(senhas.nova);
++      if (errSenha) return toast.push('Nova senha: ' + errSenha, 'error');
+       if (senhas.nova !== senhas.confirmar) return toast.push('As senhas n├úo coincidem', 'error');
+     }
+     onUpdate({ ...f, inicial: (f.nome || 'K').charAt(0).toUpperCase() });
+     setSenhas({ atual: '', nova: '', confirmar: '' });
+-    toast.push('Perfil atualizado');
++    toast.push('Perfil updated');
+   }
+ 
+   return (
+@@ -162,7 +172,21 @@ function EmpresaInfoTab({ info, onUpdate }) {
+   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+ 
+   function salvar() {
+-    if (!f.razaoSocial.trim()) return toast.push('Informe a raz├úo social', 'error');
++    const errRazao = Validacao.required(f.razaoSocial, 'Raz├úo Social');
++    if (errRazao) return toast.push(errRazao, 'error');
++
++    const errCNPJ = f.cnpj ? Validacao.cnpj(f.cnpj) : null;
++    if (errCNPJ) return toast.push(errCNPJ, 'error');
++
++    const errCEP = f.cep ? Validacao.cep(f.cep) : null;
++    if (errCEP) return toast.push(errCEP, 'error');
++
++    const errTelefone = f.telefone ? Validacao.telefone(f.telefone) : null;
++    if (errTelefone) return toast.push(errTelefone, 'error');
++
++    const errEmail = f.email ? Validacao.email(f.email) : null;
++    if (errEmail) return toast.push(errEmail, 'error');
++
+     onUpdate(f);
+     toast.push('Dados da empresa atualizados');
+   }
+@@ -261,11 +285,22 @@ function PortadorModal({ portador, onClose, onSave }) {
+   const [f, setF] = useState_S({ ...portador });
+   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+   const novo = !portador.nome;
++  const toast = useToast();
++
++  function salvar() {
++    const errNome = Validacao.required(f.nome, 'Nome');
++    if (errNome) {
++      toast.push(errNome, 'error');
++      return;
++    }
++    onSave(f);
++  }
++
+   return (
+     <Modal open onClose={onClose} title={novo ? 'Novo Portador' : 'Editar Portador'} width={460}
+       footer={<>
+         <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
+-        <Btn variant="primary" onClick={() => { if (!f.nome.trim()) return alert('Informe o nome'); onSave(f); }}>Salvar</Btn>
++        <Btn variant="primary" onClick={salvar}>Salvar</Btn>
+       </>}>
+       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+         <Field label="Nome" required><Input value={f.nome} onChange={e => set('nome', e.target.value)} placeholder="Ex: Bradesco" autoFocus /></Field>
+@@ -334,11 +369,22 @@ function CentroModal({ centro, onClose, onSave }) {
+   const [f, setF] = useState_S({ ...centro });
+   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+   const novo = !centro.nome;
++  const toast = useToast();
++
++  function salvar() {
++    const errNome = Validacao.required(f.nome, 'Nome');
++    if (errNome) {
++      toast.push(errNome, 'error');
++      return;
++    }
++    onSave(f);
++  }
++
+   return (
+     <Modal open onClose={onClose} title={novo ? 'Novo Centro de Custo' : 'Editar Centro de Custo'} width={460}
+       footer={<>
+         <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
+-        <Btn variant="primary" onClick={() => { if (!f.nome.trim()) return alert('Informe o nome'); onSave(f); }}>Salvar</Btn>
++        <Btn variant="primary" onClick={salvar}>Salvar</Btn>
+       </>}>
+       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+         <Field label="Nome" required><Input value={f.nome} onChange={e => set('nome', e.target.value)} placeholder="Ex: Marketing" autoFocus /></Field>
+@@ -361,7 +407,8 @@ function FormasConfigTab({ formas, onSave, onDelete }) {
+   async function adicionar(e) {
+     if (e && e.preventDefault) e.preventDefault();
+     const n = nova.trim();
+-    if (!n) return;
++    const errNova = Validacao.required(n, 'Nome da forma de pagamento');
++    if (errNova) return toast.push(errNova, 'error');
+     if (formas.includes(n)) return toast.push('Forma de pagamento j├í existe', 'error');
+     await onSave(n);
+     setNova('');
+@@ -490,8 +537,13 @@ function AbaSeguranca({ session }) {
+   const toast = useToast();
+ 
+   async function alterarSenha() {
+-    if (novaSenha.length < 6) { toast.push('Senha deve ter pelo menos 6 caracteres', 'error'); return; }
+-    if (novaSenha !== confirmar) { toast.push('As senhas n├úo coincidem', 'error'); return; }
++    const errAtual = Validacao.required(senhaAtual, 'Senha atual');
++    if (errAtual) return toast.push(errAtual, 'error');
++
++    const errNova = Validacao.senha(novaSenha);
++    if (errNova) return toast.push(errNova, 'error');
++
++    if (novaSenha !== confirmar) return toast.push('As senhas n├úo coincidem', 'error');
+     setLoading(true);
+     // Reautentica com senha atual primeiro
+     const { error: errReauth } = await window.supabaseClient.auth.signInWithPassword({
+@@ -642,165 +694,174 @@ function InfoLinha({ label, valor }) {
+   return (
+     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+       <span style={{ color:'var(--c-text-muted)' }}>{label}</span>
+-      <span style={{ fontWeight:500 }}>{valor || 'ÔÇö'}</span>
++      <span style={{ fontWeight:500 }}>{valor}</span>
+     </div>
+   );
+ }
+ 
+-
+-// =========================================================================
+-// ABA 4: USU├üRIOS
+-// =========================================================================
+-
+-function AbaUsuarios({ session }) {
++function AbaUsuarios({ session, data }) {
+   const [convites, setConvites] = useState_S([]);
++  const [usuariosEmpresas, setUsuariosEmpresas] = useState_S({});
++  const [nomeNovo, setNomeNovo] = useState_S('');
+   const [emailNovo, setEmailNovo] = useState_S('');
++  const [senhaNova, setSenhaNova] = useState_S('');
+   const [papelNovo, setPapelNovo] = useState_S('analista');
++  const [empresasSelecionadas, setEmpresasSelecionadas] = useState_S([]);
+   const [loading, setLoading] = useState_S(false);
+   const toast = useToast();
+ 
+   const PAPEIS = [
+-    { value:'admin', label:'Administrador',
+-      desc:'Acesso total ÔÇö pode criar/excluir empresas, lan├ºamentos e usu├írios' },
+-    { value:'analista', label:'Analista',
+-      desc:'Pode criar e editar lan├ºamentos, mas n├úo excluir empresas' },
+-    { value:'visualizador', label:'Visualizador',
+-      desc:'Apenas visualiza dados e relat├│rios, sem editar nada' },
++    { value:'admin', label:'Administrador', desc:'Acesso total a todas as empresas' },
++    { value:'analista', label:'Analista', desc:'Pode criar e editar lan├ºamentos nas empresas liberadas' },
++    { value:'visualizador', label:'Visualizador', desc:'Apenas visualiza dados nas empresas liberadas' },
+   ];
+ 
+   useEffect_S(() => { carregarConvites(); }, []);
+ 
+   async function carregarConvites() {
+-    const { data } = await window.supabaseClient.from('convites')
+-      .select('*').eq('user_id', session.user.id).order('created_at', { ascending: false });
+-    setConvites(data || []);
++    const { data: perfis } = await window.supabaseClient.from('perfis')
++      .select('*').eq('owner_id', session.user.id).order('created_at', { ascending: false });
++    
++    const { data: vinculacoes } = await window.supabaseClient.from('usuarios_empresas').select('*');
++
++    const mapVinculacoes = {};
++    if (vinculacoes) {
++      vinculacoes.forEach(v => {
++        if (!mapVinculacoes[v.user_id]) mapVinculacoes[v.user_id] = [];
++        mapVinculacoes[v.user_id].push(v.empresa_id);
++      });
++    }
++    setConvites(perfis || []);
++    setUsuariosEmpresas(mapVinculacoes);
+   }
+ 
+-  async function convidar() {
+-    if (!emailNovo || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailNovo)) {
+-      toast.push('E-mail inv├ílido', 'error'); return;
++  async function criarUsuario() {
++    const errNome = Validacao.required(nomeNovo, 'Nome');
++    if (errNome) return toast.push(errNome, 'error');
++
++    const errEmail = Validacao.email(emailNovo);
++    if (errEmail) return toast.push(errEmail, 'error');
++
++    const errSenha = Validacao.senha(senhaNova);
++    if (errSenha) return toast.push(errSenha, 'error');
++
++    if (papelNovo !== 'admin' && empresasSelecionadas.length === 0) {
++      toast.push('Selecione pelo menos uma empresa', 'error'); return;
+     }
++
+     setLoading(true);
+-    const { error } = await window.supabaseClient.from('convites').insert({
+-      user_id: session.user.id,
+-      email_convidado: emailNovo.toLowerCase().trim(),
+-      papel: papelNovo
+-    });
+-    if (error) { toast.push('Erro ao enviar convite', 'error'); }
+-    else {
+-      toast.push(`Convite enviado para ${emailNovo}`);
+-      setEmailNovo('');
++    try {
++      const response = await window.supabaseClient.functions.invoke('admin-criar-usuario', {
++        body: {
++          email: emailNovo.toLowerCase().trim(),
++          password: senhaNova,
++          nome: nomeNovo.trim(),
++          cargo: PAPEIS.find(p=>p.value===papelNovo)?.label || 'Analista',
++          empresasIds: papelNovo === 'admin' ? data.empresas.map(e=>e.id) : empresasSelecionadas
++        }
++      });
++      if (response.error) throw new Error(response.error.message || 'Erro ao criar usu├írio');
++      
++      toast.push(`Usu├írio ${nomeNovo} criado com sucesso!`);
++      setNomeNovo(''); setEmailNovo(''); setSenhaNova(''); setEmpresasSelecionadas([]);
+       carregarConvites();
++    } catch (err) {
++      toast.push(err.message, 'error');
+     }
+     setLoading(false);
+   }
+ 
+-  async function revogarConvite(id) {
+-    if (!confirm('Revogar este acesso?')) return;
+-    await window.supabaseClient.from('convites').update({ status:'revogado' }).eq('id', id);
+-    carregarConvites();
+-    toast.push('Acesso revogado');
++  async function revogarAcesso(id) {
++    if (!confirm('Remover este usu├írio permanentemente?')) return;
++    toast.push('Para exclus├úo completa, acesse o painel do Supabase.', 'error');
+   }
+ 
+-  const corPapel = { admin:'#7c3aed', analista:'var(--c-primary)', visualizador:'#64748b' };
++  const corPapel = { admin:'#7c3aed', analista:'var(--c-primary)', visualizador:'#64748b', 'Administrador(a)':'#7c3aed', 'Analista':'var(--c-primary)', 'Visualizador':'#64748b' };
+ 
+   return (
+     <div style={{ display:'flex', flexDirection:'column', gap:24 }}>
+       <AbaHeader titulo="Usu├írios e Acessos" descricao="Gerencie quem tem acesso ao sistema." />
+ 
+-      <SecaoConfig titulo="Convidar usu├írio"
+-        descricao="Envie um convite por e-mail para dar acesso ao sistema.">
+-        <div style={{ display:'flex', gap:10, alignItems:'flex-end', flexWrap:'wrap', maxWidth:600 }}>
+-          <Field label="E-mail do convidado" style={{ flex:2, minWidth:220 }}>
+-            <Input type="email" value={emailNovo} onChange={e => setEmailNovo(e.target.value)}
+-              placeholder="email@empresa.com" />
+-          </Field>
+-          <Field label="Papel / Permiss├úo" style={{ flex:1, minWidth:160 }}>
+-            <CustomSelect value={papelNovo} onChange={e => setPapelNovo(e.target.value)} options={[
+-              { value: "admin", label: "Administrador" },
+-              { value: "analista", label: "Analista" },
+-              { value: "visualizador", label: "Visualizador" }
+-            ]} />
+-          </Field>
+-          <Btn variant="primary" onClick={convidar} disabled={loading || !emailNovo}>
+-            {loading ? 'Enviando...' : 'Enviar convite'}
+-          </Btn>
+-        </div>
++      <SecaoConfig titulo="Criar novo usu├írio" descricao="Crie uma conta para um funcion├írio ou cliente e libere acesso a empresas espec├¡ficas.">
++        <div style={{ display:'flex', flexDirection:'column', gap:14, maxWidth:600 }}>
++          <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
++            <Field label="Nome Completo" style={{ flex:1, minWidth:200 }}>
++              <Input value={nomeNovo} onChange={e => setNomeNovo(e.target.value)} placeholder="Jo├úo Silva" />
++            </Field>
++            <Field label="E-mail" style={{ flex:1, minWidth:200 }}>
++              <Input type="email" value={emailNovo} onChange={e => setEmailNovo(e.target.value)} placeholder="joao@empresa.com" />
++            </Field>
++          </div>
++          
++          <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
++            <Field label="Senha Tempor├íria" style={{ flex:1, minWidth:200 }}>
++              <Input type="text" value={senhaNova} onChange={e => setSenhaNova(e.target.value)} placeholder="Defina uma senha" />
++            </Field>
++            <Field label="Cargo / Papel" style={{ flex:1, minWidth:200 }}>
++              <CustomSelect value={papelNovo} onChange={e => {
++                setPapelNovo(e.target.value);
++                if(e.target.value==='admin') setEmpresasSelecionadas(data.empresas.map(em=>em.id));
++              }} options={PAPEIS.map(p=>({value:p.value, label:p.label}))} />
++            </Field>
++          </div>
+ 
+-        {/* Descri├º├úo dos pap├®is */}
+-        <div style={{ display:'flex', flexDirection:'column', gap:6, marginTop:14, maxWidth:600 }}>
+-          {PAPEIS.map(p => (
+-            <div key={p.value} style={{ display:'flex', gap:10, alignItems:'flex-start',
+-              padding:'8px 12px', borderRadius:8, background:'var(--c-bg)',
+-              border:`1px solid ${papelNovo===p.value ? corPapel[p.value] : 'var(--c-border)'}`,
+-              cursor:'pointer', transition:'all 0.15s' }}
+-              onClick={() => setPapelNovo(p.value)}
+-            >
+-              <input type="radio" checked={papelNovo===p.value} readOnly
+-                style={{ marginTop:2, accentColor:corPapel[p.value] }} />
+-              <div>
+-                <div style={{ fontSize:13, fontWeight:600,
+-                  color: papelNovo===p.value ? corPapel[p.value] : 'var(--c-text)' }}>
+-                  {p.label}
++          {papelNovo !== 'admin' && (
++            <div style={{ padding: '12px', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8 }}>
++              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--c-text)' }}>Lojas Liberadas</div>
++              {data.empresas.length === 0 ? <div style={{ fontSize: 12, color:'var(--c-text-muted)' }}>Nenhuma empresa cadastrada.</div> : (
++                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8 }}>
++                  {data.empresas.map(emp => (
++                    <label key={emp.id} style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:'var(--c-text)' }}>
++                      <input type="checkbox" checked={empresasSelecionadas.includes(emp.id)}
++                        onChange={e => {
++                          if(e.target.checked) setEmpresasSelecionadas([...empresasSelecionadas, emp.id]);
++                          else setEmpresasSelecionadas(empresasSelecionadas.filter(id => id !== emp.id));
++                        }} style={{ accentColor:'var(--c-primary)' }} />
++                      <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{emp.nome}</span>
++                    </label>
++                  ))}
+                 </div>
+-                <div style={{ fontSize:12, color:'var(--c-text-muted)' }}>{p.desc}</div>
+-              </div>
++              )}
+             </div>
+-          ))}
++          )}
++
++          <Btn variant="primary" onClick={criarUsuario} disabled={loading} style={{ alignSelf:'flex-start' }}>
++            {loading ? 'Criando...' : 'Criar usu├írio'}
++          </Btn>
+         </div>
+       </SecaoConfig>
+ 
+-      {/* Lista de convites */}
+-      <SecaoConfig titulo="Usu├írios com acesso"
+-        descricao={`${convites.filter(c=>c.status!=='revogado').length} usu├írio(s) convidado(s)`}>
++      <SecaoConfig titulo="Usu├írios com acesso" descricao={`${convites.length} usu├írio(s) criado(s)`}>
+         {convites.length === 0 ? (
+-          <EmptyState icon="building" title="Nenhum convite enviado"
+-            hint="Convide colaboradores para acessar o sistema." />
++          <EmptyState icon="users" title="Nenhum usu├írio" hint="Voc├¬ ainda n├úo criou contas para outras pessoas." />
+         ) : (
+           <div style={{ display:'flex', flexDirection:'column', gap:8, maxWidth:600 }}>
+-            {convites.map(c => (
+-              <div key={c.id} style={{ display:'flex', alignItems:'center', gap:12,
+-                padding:'10px 14px', borderRadius:10, background:'var(--c-bg)',
+-                border:'1px solid var(--c-border)', opacity: c.status==='revogado' ? 0.5 : 1 }}>
+-                <div style={{ width:36, height:36, borderRadius:99,
+-                  background: corPapel[c.papel] + '20', color: corPapel[c.papel],
+-                  display:'flex', alignItems:'center', justifyContent:'center',
+-                  fontWeight:700, fontSize:14, flexShrink:0 }}>
+-                  {c.email_convidado.charAt(0).toUpperCase()}
++            {convites.map(c => {
++              const cor = corPapel[c.cargo] || 'var(--c-primary)';
++              const vinculadas = usuariosEmpresas[c.id] || [];
++              const nomesEmpresas = data.empresas.filter(e=>vinculadas.includes(e.id)).map(e=>e.nome).join(', ');
++              
++              return (
++              <div key={c.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 14px', borderRadius:10, background:'var(--c-bg)', border:'1px solid var(--c-border)' }}>
++                <div style={{ width:36, height:36, borderRadius:99, background: cor + '20', color: cor, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:14, flexShrink:0 }}>
++                  {c.nome.charAt(0).toUpperCase()}
+                 </div>
+                 <div style={{ flex:1, minWidth:0 }}>
+-                  <div style={{ fontSize:13, fontWeight:500, overflow:'hidden',
+-                    textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+-                    {c.email_convidado}
+-                  </div>
+-                  <div style={{ display:'flex', gap:8, alignItems:'center', marginTop:2 }}>
+-                    <span style={{ fontSize:11, fontWeight:600,
+-                      color: corPapel[c.papel] }}>
+-                      {PAPEIS.find(p=>p.value===c.papel)?.label}
+-                    </span>
++                  <div style={{ fontSize:13, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.nome}</div>
++                  <div style={{ fontSize:12, color:'var(--c-text-muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.email}</div>
++                  <div style={{ display:'flex', gap:8, alignItems:'center', marginTop:4 }}>
++                    <span style={{ fontSize:11, fontWeight:600, color: cor }}>{c.cargo}</span>
+                     <span style={{ fontSize:11, color:'var(--c-text-muted)' }}>┬À</span>
+-                    <span style={{ fontSize:11, color:
+-                      c.status==='aceito' ? '#16a34a' :
+-                      c.status==='revogado' ? '#dc2626' : '#f59e0b', fontWeight:500 }}>
+-                      {c.status==='aceito' ? 'ÔùÅ Ativo' :
+-                       c.status==='revogado' ? 'ÔùÅ Revogado' : 'ÔùÅ Pendente'}
+-                    </span>
+-                    <span style={{ fontSize:11, color:'var(--c-text-muted)' }}>┬À</span>
+-                    <span style={{ fontSize:11, color:'var(--c-text-muted)' }}>
+-                      {new Date(c.created_at).toLocaleDateString('pt-BR')}
++                    <span style={{ fontSize:11, color:'var(--c-text-muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={nomesEmpresas}>
++                      {vinculadas.length} empresa(s)
+                     </span>
+                   </div>
+                 </div>
+-                {c.status !== 'revogado' && (
+-                  <button onClick={() => revogarConvite(c.id)}
+-                    style={{ background:'none', border:'1px solid var(--c-border)',
+-                      borderRadius:6, padding:'4px 10px', cursor:'pointer',
+-                      fontSize:12, color:'var(--c-text-muted)', fontFamily:'inherit' }}>
+-                    Revogar
+-                  </button>
+-                )}
++                <button onClick={() => revogarAcesso(c.id)} style={{ background:'none', border:'1px solid var(--c-border)', borderRadius:6, padding:'4px 10px', cursor:'pointer', fontSize:12, color:'var(--c-text-muted)', fontFamily:'inherit' }}>
++                  Remover
++                </button>
+               </div>
+-            ))}
++            )})}
+           </div>
+         )}
+       </SecaoConfig>
+diff --git a/ui.jsx b/ui.jsx
+index b19d300..311ff84 100644
+--- a/ui.jsx
++++ b/ui.jsx
+@@ -35,6 +35,7 @@ function Icon({ name, size = 18, color = 'currentColor', strokeWidth = 2 }) {
+     receipt: <><path d="M5 3h14v18l-3-2-3 2-3-2-3 2-2-1V3z" /><path d="M9 8h6M9 12h6M9 16h3" /></>,
+     eye: <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z" /><circle cx="12" cy="12" r="3" /></>,
+     chevronDown: <><path d="m6 9 6 6 6-6" /></>,
++    chevronUp: <><path d="m18 15-6-6-6 6" /></>,
+     chevronRight: <><path d="m9 6 6 6-6 6" /></>,
+     alert: <><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /></>,
+     settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></>,
+@@ -215,6 +216,7 @@ function CustomSelect({ value, onChange, options, placeholder = 'Selecionar', st
+     <div ref={ref} style={{ position: 'relative', ...style }}>
+       <button
+         type="button"
++        className="custom-select-btn"
+         disabled={disabled}
+         onClick={() => !disabled && setOpen(o => !o)}
+         style={{
+@@ -512,6 +514,18 @@ const Validacao = {
+   },
+   senha(v) {
+     return v.length >= 6 ? null : 'Senha deve ter pelo menos 6 caracteres';
++  },
++  telefone(v) {
++    if (!v) return null;
++    const nums = v.replace(/\D/g, '');
++    if (nums.length === 0) return null;
++    return nums.length === 10 || nums.length === 11 ? null : 'Telefone deve ter 10 ou 11 d├¡gitos';
++  },
++  cep(v) {
++    if (!v) return null;
++    const nums = v.replace(/\D/g, '');
++    if (nums.length === 0) return null;
++    return nums.length === 8 ? null : 'CEP deve ter 8 d├¡gitos';
+   }
+ };
+ 
+diff --git a/workspace.jsx b/workspace.jsx
+index 68233c1..54cf4ba 100644
+--- a/workspace.jsx
++++ b/workspace.jsx
+@@ -36,19 +36,6 @@ function WorkspaceEmpresa({ empresa, lancamentos, portadores, centrosCusto, form
+             </div>
+           </div>
+           <div style={{ display: 'flex', gap: 8 }}>
+-            <Btn variant="primary" icon="plus" onClick={() => setNovoLancHeader({
+-              id: uid('lanc'),
+-              tipo: 'saida',
+-              vencimento: todayISO(),
+-              competencia: competenciaFromDate(todayISO()),
+-              valor: '',
+-              descricao: '',
+-              portadorId: portadores[0]?.id || '',
+-              centroCustoId: centrosCusto.find(c => c.tipo === 'saida')?.id || '',
+-              formaPagamento: formasPagamento[0] || 'PIX',
+-              pago: false,
+-              observacao: ''
+-            })}>Novo Lan├ºamento</Btn>
+           </div>
+         </div>
+ 
+@@ -115,6 +102,81 @@ function ContasTab({ empresa, lancamentos, portadores, centrosCusto, formasPagam
+   const POR_PAGINA = 20;
+   const [pagina, setPagina] = useState_W(1);
+ 
++  const [inlineFormOpen, setInlineFormOpen] = useState_W(true);
++  const [fInline, setFInline] = useState_W({
++    tipo: 'saida',
++    descricao: '',
++    valor: '',
++    vencimento: todayISO(),
++    pago: false,
++    portadorId: portadores[0]?.id || '',
++    centroCustoId: centrosCusto.find(c => c.tipo === 'saida')?.id || centrosCusto[0]?.id || '',
++    formaPagamento: formasPagamento[0] || 'PIX'
++  });
++
++  const setInlineVal = (k, v) => {
++    setFInline(prev => {
++      const next = { ...prev, [k]: v };
++      if (k === 'tipo') {
++        next.centroCustoId = centrosCusto.find(c => c.tipo === v)?.id || '';
++      }
++      return next;
++    });
++  };
++
++  const ccsFiltradosInline = centrosCusto.filter(c => c.tipo === fInline.tipo);
++
++  function submitInline(e) {
++    e?.preventDefault();
++    
++    const errTipo = Validacao.required(fInline.tipo, 'Tipo');
++    if (errTipo) return toast.push(errTipo, 'error');
++    
++    const errDesc = Validacao.required(fInline.descricao, 'Descri├º├úo');
++    if (errDesc) return toast.push(errDesc, 'error');
++    
++    const errValorReq = Validacao.required(fInline.valor, 'Valor');
++    if (errValorReq) return toast.push(errValorReq, 'error');
++    const errValor = Validacao.valor(fInline.valor);
++    if (errValor) return toast.push(errValor, 'error');
++    
++    const errVenc = Validacao.required(fInline.vencimento, 'Vencimento');
++    if (errVenc) return toast.push(errVenc, 'error');
++    
++    const errPago = Validacao.required(fInline.pago !== null && fInline.pago !== undefined ? String(fInline.pago) : '', 'Status Pago');
++    if (errPago) return toast.push(errPago, 'error');
++    
++    const errPortador = Validacao.required(fInline.portadorId, 'Portador');
++    if (errPortador) return toast.push(errPortador, 'error');
++    
++    const errCc = Validacao.required(fInline.centroCustoId, 'Centro de Custo');
++    if (errCc) return toast.push(errCc, 'error');
++    
++    const errFp = Validacao.required(fInline.formaPagamento, 'Forma de Pagamento');
++    if (errFp) return toast.push(errFp, 'error');
++
++    onUpsertLanc({
++      id: uid('lanc'),
++      ...fInline,
++      valor: parseFloat(fInline.valor),
++      empresaId: empresa.id,
++      competencia: competenciaFromDate(fInline.vencimento)
++    });
++    
++    setFInline({
++      tipo: 'saida',
++      descricao: '',
++      valor: '',
++      vencimento: todayISO(),
++      pago: false,
++      portadorId: portadores[0]?.id || '',
++      centroCustoId: centrosCusto.find(c => c.tipo === 'saida')?.id || centrosCusto[0]?.id || '',
++      formaPagamento: formasPagamento[0] || 'PIX'
++    });
++    
++    toast.push('Lan├ºamento cadastrado com sucesso!');
++  }
++
+   useEffect_W(() => setPagina(1), [filtros]);
+ 
+   const portMap = Object.fromEntries(portadores.map(p => [p.id, p]));
+@@ -159,6 +221,87 @@ function ContasTab({ empresa, lancamentos, portadores, centrosCusto, formasPagam
+         <KPI label="Pago" value={formatBRL(totalPago)} icon="check" color="var(--c-primary)" sub={`${filtrados.filter(l => l.tipo === 'saida' && l.pago).length} quitados`} />
+       </div>
+ 
++      {/* R├ípido Cadastro de Lan├ºamento */}
++      <Card padding={14} style={{ marginBottom: 14 }}>
++        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: inlineFormOpen ? 12 : 0 }}>
++          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
++            <Icon name="plus" size={16} color="var(--c-primary)" />
++            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>R├ípido Cadastro de Lan├ºamento</h3>
++          </div>
++          <button 
++            type="button"
++            onClick={() => setInlineFormOpen(!inlineFormOpen)} 
++            style={{
++              background: 'none', border: 'none', cursor: 'pointer',
++              color: 'var(--c-text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4,
++              fontSize: 12, fontWeight: 500, fontFamily: 'inherit'
++            }}
++          >
++            <Icon name={inlineFormOpen ? 'chevronUp' : 'chevronDown'} size={14} />
++            {inlineFormOpen ? 'Minimizar' : 'Expandir'}
++          </button>
++        </div>
++        
++        {inlineFormOpen && (
++          <form onSubmit={submitInline}>
++            <div style={{ 
++              display: 'grid', 
++              gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', 
++              gap: 12, 
++              alignItems: 'end' 
++            }}>
++              <Field label="Tipo" required>
++                <CustomSelect value={fInline.tipo} onChange={e => setInlineVal('tipo', e.target.value)} options={[
++                  { value: 'entrada', label: 'Entrada' },
++                  { value: 'saida', label: 'Sa├¡da' }
++                ]} />
++              </Field>
++              
++              <Field label="Descri├º├úo" required>
++                <Input id="inline-descricao" value={fInline.descricao} onChange={e => setInlineVal('descricao', e.target.value)} placeholder="Ex: Conta de luz" />
++              </Field>
++              
++              <Field label="Valor (R$)" required>
++                <Input type="number" min="0" step="0.01" value={fInline.valor} onChange={e => setInlineVal('valor', e.target.value)} placeholder="0,00" />
++              </Field>
++              
++              <Field label="Vencimento" required>
++                <Input type="date" value={fInline.vencimento} onChange={e => setInlineVal('vencimento', e.target.value)} />
++              </Field>
++              
++              <Field label="Status" required>
++                <CustomSelect value={fInline.pago ? 'pago' : 'pendente'} onChange={e => setInlineVal('pago', e.target.value === 'pago')} options={[
++                  { value: 'pendente', label: 'Pendente' },
++                  { value: 'pago', label: 'Pago' }
++                ]} />
++              </Field>
++              
++              <Field label="Portador" required>
++                <CustomSelect value={fInline.portadorId} onChange={e => setInlineVal('portadorId', e.target.value)} options={[
++                  ...portadores.map(p => ({ value: p.id, label: p.nome }))
++                ]} />
++              </Field>
++              
++              <Field label="Centro de Custo" required>
++                <CustomSelect value={fInline.centroCustoId} onChange={e => setInlineVal('centroCustoId', e.target.value)} options={[
++                  ...ccsFiltradosInline.map(c => ({ value: c.id, label: c.nome }))
++                ]} />
++              </Field>
++              
++              <Field label="Forma de Pagamento" required>
++                <CustomSelect value={fInline.formaPagamento} onChange={e => setInlineVal('formaPagamento', e.target.value)} options={[
++                  ...formasPagamento.map(f => ({ value: f, label: f }))
++                ]} />
++              </Field>
++              
++              <div style={{ display: 'flex', minWidth: 100 }}>
++                <Btn variant="primary" type="submit" style={{ width: '100%', height: 38 }}>Salvar</Btn>
++              </div>
++            </div>
++          </form>
++        )}
++      </Card>
++
+       {/* Filtros */}
+       <Card padding={14} style={{ marginBottom: 14 }}>
+         <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 1fr 1fr 1fr 1fr auto', gap: 8, alignItems: 'end' }}>
+@@ -211,7 +354,6 @@ function ContasTab({ empresa, lancamentos, portadores, centrosCusto, formasPagam
+           <div style={{ display: 'flex', gap: 6 }}>
+             {hasFilter && <Btn variant="ghost" size="sm" onClick={clearFilters}>Limpar</Btn>}
+             <Btn variant="secondary" icon="upload" onClick={() => setShowImport(true)}>Importar XLSX</Btn>
+-            <Btn variant="primary" icon="plus" onClick={() => setNovoLanc({ tipo: 'saida', vencimento: todayISO(), valor: '', descricao: '', portadorId: portadores[0]?.id, centroCustoId: centrosCusto.find(c => c.tipo === 'saida')?.id, formaPagamento: formasPagamento[0], competencia: competenciaFromDate(todayISO()) })}>Novo</Btn>
+           </div>
+         </div>
+       </Card>
+@@ -289,7 +431,13 @@ function ContasTab({ empresa, lancamentos, portadores, centrosCusto, formasPagam
+         </div>
+         {totalFiltrados === 0 && (
+           <EmptyState icon="list" title="Nenhum lan├ºamento encontrado" hint={hasFilter ? 'Ajuste os filtros para ver mais resultados.' : 'Cadastre o primeiro lan├ºamento desta empresa.'} action={
+-            <Btn variant="primary" icon="plus" onClick={() => setNovoLanc({ tipo: 'saida', vencimento: todayISO(), valor: '' })}>Novo lan├ºamento</Btn>
++            <Btn variant="primary" icon="plus" onClick={() => {
++              setInlineFormOpen(true);
++              setTimeout(() => {
++                const el = document.getElementById('inline-descricao');
++                if (el) el.focus();
++              }, 50);
++            }}>Novo lan├ºamento</Btn>
+           } />
+         )}
+         
+@@ -405,11 +553,16 @@ function LancamentoFormModal({ lanc, portadores, centrosCusto, formasPagamento,
+   });
+   const set = (k, v) => setF(prev => ({ ...prev, [k]: v }));
+   const ccsFiltrados = centrosCusto.filter(c => c.tipo === f.tipo);
++  const toast = useToast();
+ 
+   function submit(e) {
+     e?.preventDefault();
+-    if (!f.descricao.trim()) return alert('Descri├º├úo ├® obrigat├│ria');
+-    if (!f.valor || +f.valor <= 0) return alert('Informe um valor v├ílido');
++    const errDesc = Validacao.required(f.descricao, 'Descri├º├úo');
++    if (errDesc) return toast.push(errDesc, 'error');
++
++    const errValor = Validacao.valor(f.valor);
++    if (errValor) return toast.push(errValor, 'error');
++
+     const cc = ccsFiltrados.find(c => c.id === f.centroCustoId) || ccsFiltrados[0];
+     onSave({ ...f, valor: +f.valor, centroCustoId: cc.id, competencia: competenciaFromDate(f.vencimento) });
+   }
+@@ -481,11 +634,23 @@ function PagamentoModal({ lanc, portadores, centrosCusto, onClose, onConfirm })
+   const [portadorId, setPortadorId] = useState_W(lanc.portadorId);
+   const portMap = Object.fromEntries(portadores.map(p => [p.id, p]));
+   const isEntrada = lanc.tipo === 'entrada';
++  const toast = useToast();
++
++  function salvar() {
++    const errData = Validacao.required(data, 'Data');
++    if (errData) return toast.push(errData, 'error');
++
++    const errPortador = Validacao.required(portadorId, 'Portador');
++    if (errPortador) return toast.push(errPortador, 'error');
++
++    onConfirm({ data, portadorId, comprovante: `CMP-${Math.floor(Math.random() * 90000 + 10000)}.pdf` });
++  }
++
+   return (
+     <Modal open onClose={onClose} title={isEntrada ? 'Confirmar Recebimento' : 'Confirmar Pagamento'} width={520}
+       footer={<>
+         <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
+-        <Btn variant="success" icon="check" onClick={() => onConfirm({ data, portadorId, comprovante: `CMP-${Math.floor(Math.random() * 90000 + 10000)}.pdf` })}>
++        <Btn variant="success" icon="check" onClick={salvar}>
+           Confirmar {isEntrada ? 'Recebimento' : 'Pagamento'}
+         </Btn>
+       </>}>
+@@ -872,7 +1037,18 @@ function ModalImportarXLSX({ portadores, centrosCusto, onClose, onImport }) {
+     reader.readAsBinaryString(file);
+   }
+ 
++  const toast = useToast();
++
+   function doImport() {
++    const errData = Validacao.required(map.data, 'Coluna de Data');
++    if (errData) return toast.push(errData, 'error');
++
++    const errDesc = Validacao.required(map.descricao, 'Coluna de Descri├º├úo');
++    if (errDesc) return toast.push(errDesc, 'error');
++
++    const errValor = Validacao.required(map.valor, 'Coluna de Valor');
++    if (errValor) return toast.push(errValor, 'error');
++
+     const idx = {
+       data: colNames.indexOf(map.data),
+       descricao: colNames.indexOf(map.descricao),

@@ -36,19 +36,6 @@ function WorkspaceEmpresa({ empresa, lancamentos, portadores, centrosCusto, form
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <Btn variant="primary" icon="plus" onClick={() => setNovoLancHeader({
-              id: uid('lanc'),
-              tipo: 'saida',
-              vencimento: todayISO(),
-              competencia: competenciaFromDate(todayISO()),
-              valor: '',
-              descricao: '',
-              portadorId: portadores[0]?.id || '',
-              centroCustoId: centrosCusto.find(c => c.tipo === 'saida')?.id || '',
-              formaPagamento: formasPagamento[0] || 'PIX',
-              pago: false,
-              observacao: ''
-            })}>Novo Lançamento</Btn>
           </div>
         </div>
 
@@ -115,6 +102,81 @@ function ContasTab({ empresa, lancamentos, portadores, centrosCusto, formasPagam
   const POR_PAGINA = 20;
   const [pagina, setPagina] = useState_W(1);
 
+  const [inlineFormOpen, setInlineFormOpen] = useState_W(true);
+  const [fInline, setFInline] = useState_W({
+    tipo: 'saida',
+    descricao: '',
+    valor: '',
+    vencimento: todayISO(),
+    pago: false,
+    portadorId: portadores[0]?.id || '',
+    centroCustoId: centrosCusto.find(c => c.tipo === 'saida')?.id || centrosCusto[0]?.id || '',
+    formaPagamento: formasPagamento[0] || 'PIX'
+  });
+
+  const setInlineVal = (k, v) => {
+    setFInline(prev => {
+      const next = { ...prev, [k]: v };
+      if (k === 'tipo') {
+        next.centroCustoId = centrosCusto.find(c => c.tipo === v)?.id || '';
+      }
+      return next;
+    });
+  };
+
+  const ccsFiltradosInline = centrosCusto.filter(c => c.tipo === fInline.tipo);
+
+  function submitInline(e) {
+    e?.preventDefault();
+    
+    const errTipo = Validacao.required(fInline.tipo, 'Tipo');
+    if (errTipo) return toast.push(errTipo, 'error');
+    
+    const errDesc = Validacao.required(fInline.descricao, 'Descrição');
+    if (errDesc) return toast.push(errDesc, 'error');
+    
+    const errValorReq = Validacao.required(fInline.valor, 'Valor');
+    if (errValorReq) return toast.push(errValorReq, 'error');
+    const errValor = Validacao.valor(fInline.valor);
+    if (errValor) return toast.push(errValor, 'error');
+    
+    const errVenc = Validacao.required(fInline.vencimento, 'Vencimento');
+    if (errVenc) return toast.push(errVenc, 'error');
+    
+    const errPago = Validacao.required(fInline.pago !== null && fInline.pago !== undefined ? String(fInline.pago) : '', 'Status Pago');
+    if (errPago) return toast.push(errPago, 'error');
+    
+    const errPortador = Validacao.required(fInline.portadorId, 'Portador');
+    if (errPortador) return toast.push(errPortador, 'error');
+    
+    const errCc = Validacao.required(fInline.centroCustoId, 'Centro de Custo');
+    if (errCc) return toast.push(errCc, 'error');
+    
+    const errFp = Validacao.required(fInline.formaPagamento, 'Forma de Pagamento');
+    if (errFp) return toast.push(errFp, 'error');
+
+    onUpsertLanc({
+      id: uid('lanc'),
+      ...fInline,
+      valor: parseFloat(fInline.valor),
+      empresaId: empresa.id,
+      competencia: competenciaFromDate(fInline.vencimento)
+    });
+    
+    setFInline({
+      tipo: 'saida',
+      descricao: '',
+      valor: '',
+      vencimento: todayISO(),
+      pago: false,
+      portadorId: portadores[0]?.id || '',
+      centroCustoId: centrosCusto.find(c => c.tipo === 'saida')?.id || centrosCusto[0]?.id || '',
+      formaPagamento: formasPagamento[0] || 'PIX'
+    });
+    
+    toast.push('Lançamento cadastrado com sucesso!');
+  }
+
   useEffect_W(() => setPagina(1), [filtros]);
 
   const portMap = Object.fromEntries(portadores.map(p => [p.id, p]));
@@ -158,6 +220,87 @@ function ContasTab({ empresa, lancamentos, portadores, centrosCusto, formasPagam
         <KPI label="Recebido" value={formatBRL(totalRecebido)} icon="check" color="#16a34a" sub={`${filtrados.filter(l => l.tipo === 'entrada' && l.pago).length} quitados`} />
         <KPI label="Pago" value={formatBRL(totalPago)} icon="check" color="var(--c-primary)" sub={`${filtrados.filter(l => l.tipo === 'saida' && l.pago).length} quitados`} />
       </div>
+
+      {/* Rápido Cadastro de Lançamento */}
+      <Card padding={14} style={{ marginBottom: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: inlineFormOpen ? 12 : 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Icon name="plus" size={16} color="var(--c-primary)" />
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>Rápido Cadastro de Lançamento</h3>
+          </div>
+          <button 
+            type="button"
+            onClick={() => setInlineFormOpen(!inlineFormOpen)} 
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: 'var(--c-text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4,
+              fontSize: 12, fontWeight: 500, fontFamily: 'inherit'
+            }}
+          >
+            <Icon name={inlineFormOpen ? 'chevronUp' : 'chevronDown'} size={14} />
+            {inlineFormOpen ? 'Minimizar' : 'Expandir'}
+          </button>
+        </div>
+        
+        {inlineFormOpen && (
+          <form onSubmit={submitInline}>
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', 
+              gap: 12, 
+              alignItems: 'end' 
+            }}>
+              <Field label="Tipo" required>
+                <CustomSelect value={fInline.tipo} onChange={e => setInlineVal('tipo', e.target.value)} options={[
+                  { value: 'entrada', label: 'Entrada' },
+                  { value: 'saida', label: 'Saída' }
+                ]} />
+              </Field>
+              
+              <Field label="Descrição" required>
+                <Input id="inline-descricao" value={fInline.descricao} onChange={e => setInlineVal('descricao', e.target.value)} placeholder="Ex: Conta de luz" />
+              </Field>
+              
+              <Field label="Valor (R$)" required>
+                <Input type="number" min="0" step="0.01" value={fInline.valor} onChange={e => setInlineVal('valor', e.target.value)} placeholder="0,00" />
+              </Field>
+              
+              <Field label="Vencimento" required>
+                <Input type="date" value={fInline.vencimento} onChange={e => setInlineVal('vencimento', e.target.value)} />
+              </Field>
+              
+              <Field label="Status" required>
+                <CustomSelect value={fInline.pago ? 'pago' : 'pendente'} onChange={e => setInlineVal('pago', e.target.value === 'pago')} options={[
+                  { value: 'pendente', label: 'Pendente' },
+                  { value: 'pago', label: 'Pago' }
+                ]} />
+              </Field>
+              
+              <Field label="Portador" required>
+                <CustomSelect value={fInline.portadorId} onChange={e => setInlineVal('portadorId', e.target.value)} options={[
+                  ...portadores.map(p => ({ value: p.id, label: p.nome }))
+                ]} />
+              </Field>
+              
+              <Field label="Centro de Custo" required>
+                <CustomSelect value={fInline.centroCustoId} onChange={e => setInlineVal('centroCustoId', e.target.value)} options={[
+                  ...ccsFiltradosInline.map(c => ({ value: c.id, label: c.nome }))
+                ]} />
+              </Field>
+              
+              <Field label="Forma de Pagamento" required>
+                <CustomSelect value={fInline.formaPagamento} onChange={e => setInlineVal('formaPagamento', e.target.value)} options={[
+                  ...formasPagamento.map(f => ({ value: f, label: f }))
+                ]} />
+              </Field>
+              
+              <div style={{ display: 'flex', minWidth: 100 }}>
+                <Btn variant="primary" type="submit" style={{ width: '100%', height: 38 }}>Salvar</Btn>
+              </div>
+            </div>
+          </form>
+        )}
+      </Card>
 
       {/* Filtros */}
       <Card padding={14} style={{ marginBottom: 14 }}>
@@ -211,7 +354,6 @@ function ContasTab({ empresa, lancamentos, portadores, centrosCusto, formasPagam
           <div style={{ display: 'flex', gap: 6 }}>
             {hasFilter && <Btn variant="ghost" size="sm" onClick={clearFilters}>Limpar</Btn>}
             <Btn variant="secondary" icon="upload" onClick={() => setShowImport(true)}>Importar XLSX</Btn>
-            <Btn variant="primary" icon="plus" onClick={() => setNovoLanc({ tipo: 'saida', vencimento: todayISO(), valor: '', descricao: '', portadorId: portadores[0]?.id, centroCustoId: centrosCusto.find(c => c.tipo === 'saida')?.id, formaPagamento: formasPagamento[0], competencia: competenciaFromDate(todayISO()) })}>Novo</Btn>
           </div>
         </div>
       </Card>
@@ -289,7 +431,13 @@ function ContasTab({ empresa, lancamentos, portadores, centrosCusto, formasPagam
         </div>
         {totalFiltrados === 0 && (
           <EmptyState icon="list" title="Nenhum lançamento encontrado" hint={hasFilter ? 'Ajuste os filtros para ver mais resultados.' : 'Cadastre o primeiro lançamento desta empresa.'} action={
-            <Btn variant="primary" icon="plus" onClick={() => setNovoLanc({ tipo: 'saida', vencimento: todayISO(), valor: '' })}>Novo lançamento</Btn>
+            <Btn variant="primary" icon="plus" onClick={() => {
+              setInlineFormOpen(true);
+              setTimeout(() => {
+                const el = document.getElementById('inline-descricao');
+                if (el) el.focus();
+              }, 50);
+            }}>Novo lançamento</Btn>
           } />
         )}
         
@@ -405,11 +553,19 @@ function LancamentoFormModal({ lanc, portadores, centrosCusto, formasPagamento, 
   });
   const set = (k, v) => setF(prev => ({ ...prev, [k]: v }));
   const ccsFiltrados = centrosCusto.filter(c => c.tipo === f.tipo);
+  const toast = useToast();
 
   function submit(e) {
     e?.preventDefault();
-    if (!f.descricao.trim()) return alert('Descrição é obrigatória');
-    if (!f.valor || +f.valor <= 0) return alert('Informe um valor válido');
+    const errDesc = Validacao.required(f.descricao, 'Descrição');
+    if (errDesc) return toast.push(errDesc, 'error');
+
+    const errValor = Validacao.valor(f.valor);
+    if (errValor) return toast.push(errValor, 'error');
+
+    const errVenc = Validacao.required(f.vencimento, 'Vencimento');
+    if (errVenc) return toast.push(errVenc, 'error');
+
     const cc = ccsFiltrados.find(c => c.id === f.centroCustoId) || ccsFiltrados[0];
     onSave({ ...f, valor: +f.valor, centroCustoId: cc.id, competencia: competenciaFromDate(f.vencimento) });
   }
@@ -481,11 +637,23 @@ function PagamentoModal({ lanc, portadores, centrosCusto, onClose, onConfirm }) 
   const [portadorId, setPortadorId] = useState_W(lanc.portadorId);
   const portMap = Object.fromEntries(portadores.map(p => [p.id, p]));
   const isEntrada = lanc.tipo === 'entrada';
+  const toast = useToast();
+
+  function salvar() {
+    const errData = Validacao.required(data, 'Data');
+    if (errData) return toast.push(errData, 'error');
+
+    const errPortador = Validacao.required(portadorId, 'Portador');
+    if (errPortador) return toast.push(errPortador, 'error');
+
+    onConfirm({ data, portadorId, comprovante: `CMP-${Math.floor(Math.random() * 90000 + 10000)}.pdf` });
+  }
+
   return (
     <Modal open onClose={onClose} title={isEntrada ? 'Confirmar Recebimento' : 'Confirmar Pagamento'} width={520}
       footer={<>
         <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
-        <Btn variant="success" icon="check" onClick={() => onConfirm({ data, portadorId, comprovante: `CMP-${Math.floor(Math.random() * 90000 + 10000)}.pdf` })}>
+        <Btn variant="success" icon="check" onClick={salvar}>
           Confirmar {isEntrada ? 'Recebimento' : 'Pagamento'}
         </Btn>
       </>}>
@@ -872,7 +1040,18 @@ function ModalImportarXLSX({ portadores, centrosCusto, onClose, onImport }) {
     reader.readAsBinaryString(file);
   }
 
+  const toast = useToast();
+
   function doImport() {
+    const errData = Validacao.required(map.data, 'Coluna de Data');
+    if (errData) return toast.push(errData, 'error');
+
+    const errDesc = Validacao.required(map.descricao, 'Coluna de Descrição');
+    if (errDesc) return toast.push(errDesc, 'error');
+
+    const errValor = Validacao.required(map.valor, 'Coluna de Valor');
+    if (errValor) return toast.push(errValor, 'error');
+
     const idx = {
       data: colNames.indexOf(map.data),
       descricao: colNames.indexOf(map.descricao),

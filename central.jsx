@@ -4,7 +4,6 @@ const { useState: useState_C, useMemo: useMemo_C } = React;
 function CentralGestao({ data, onOpenEmpresa, onCreateEmpresa, onDeleteEmpresa, onEditEmpresa }) {
   const [busca, setBusca] = useState_C('');
   const [filtroStatus, setFiltroStatus] = useState_C('todos');
-  const [modalEmp, setModalEmp] = useState_C(null); // {empresa} ou {new:true}
   const [view, setView] = useState_C('cards'); // cards | tabela
   const [dashFiltros, setDashFiltros] = useState_C({
     periodo: '6m',      // '1m' | '3m' | '6m' | '12m' | 'custom'
@@ -113,7 +112,7 @@ function CentralGestao({ data, onOpenEmpresa, onCreateEmpresa, onDeleteEmpresa, 
           <Btn variant="secondary" icon="download" onClick={() => exportConsolidadoXLSX(data.empresas, data.lancamentos, data.portadores, data.centrosCusto)}>
             Exportar Consolidado
           </Btn>
-          <Btn variant="primary" icon="plus" onClick={() => setModalEmp({ new: true })}>Nova Empresa</Btn>
+          <Btn variant="primary" icon="plus" onClick={() => onCreateEmpresa()}>Nova Empresa</Btn>
         </div>
       </div>
 
@@ -233,7 +232,7 @@ function CentralGestao({ data, onOpenEmpresa, onCreateEmpresa, onDeleteEmpresa, 
       {/* Grade de empresas */}
       {view === 'cards' ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
-          {filtradas.map(e => <EmpresaCard key={e.id} empresa={e} onOpen={() => onOpenEmpresa(e.id)} onEdit={() => setModalEmp({ empresa: e })} />)}
+          {filtradas.map(e => <EmpresaCard key={e.id} empresa={e} onOpen={() => onOpenEmpresa(e.id)} onEdit={() => onEditEmpresa(e)} />)}
         </div>
       ) : (
         <Card padding={0}>
@@ -273,29 +272,9 @@ function CentralGestao({ data, onOpenEmpresa, onCreateEmpresa, onDeleteEmpresa, 
       {filtradas.length === 0 && (
         <Card>
           <EmptyState icon="building" title="Nenhuma empresa encontrada" hint="Tente outros filtros ou cadastre uma nova empresa." action={
-            <Btn variant="primary" icon="plus" onClick={() => setModalEmp({ new: true })}>Nova Empresa</Btn>
+            <Btn variant="primary" icon="plus" onClick={() => onCreateEmpresa()}>Nova Empresa</Btn>
           } />
         </Card>
-      )}
-
-      {/* Modal empresa */}
-      {modalEmp && (
-        <EmpresaFormModal
-          empresa={modalEmp.empresa}
-          onClose={() => setModalEmp(null)}
-          onSave={(emp) => {
-            if (modalEmp.new) { onCreateEmpresa(emp); toast.push('Empresa cadastrada com sucesso'); }
-            else { onEditEmpresa(emp); toast.push('Empresa atualizada'); }
-            setModalEmp(null);
-          }}
-          onDelete={modalEmp.empresa ? () => {
-            if (confirm(`Excluir "${modalEmp.empresa.nome}"? Todos os lançamentos serão removidos.`)) {
-              onDeleteEmpresa(modalEmp.empresa.id);
-              toast.push('Empresa excluída', 'error');
-              setModalEmp(null);
-            }
-          } : null}
-        />
       )}
     </div>
   );
@@ -367,49 +346,6 @@ function EmpresaCard({ empresa, onOpen, onEdit }) {
         </span>
       </div>
     </div>
-  );
-}
-
-function EmpresaFormModal({ empresa, onClose, onSave, onDelete }) {
-  const [f, setF] = useState_C(empresa || {
-    id: uid('emp'), nome: '', cnpj: '', segmento: '', responsavel: '', email: '', telefone: '', criadaEm: todayISO()
-  });
-  const set = (k, v) => setF(prev => ({ ...prev, [k]: v }));
-  function submit(e) {
-    e.preventDefault();
-    if (!f.nome.trim()) return alert('Nome é obrigatório');
-    onSave(f);
-  }
-  return (
-    <Modal open onClose={onClose} title={empresa ? 'Editar Empresa' : 'Cadastrar Nova Empresa'} width={620}
-      footer={
-        <>
-          {onDelete && <Btn variant="danger" icon="trash" onClick={onDelete} style={{ marginRight: 'auto' }}>Excluir</Btn>}
-          <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
-          <Btn variant="primary" onClick={submit}>{empresa ? 'Salvar Alterações' : 'Cadastrar Empresa'}</Btn>
-        </>
-      }>
-      <form onSubmit={submit} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-        <Field label="Razão Social / Nome" required span={2}>
-          <Input value={f.nome} onChange={e => set('nome', e.target.value)} placeholder="Ex: Padaria Bom Pão Ltda" autoFocus />
-        </Field>
-        <Field label="CNPJ" required>
-          <Input value={f.cnpj} onChange={e => set('cnpj', e.target.value)} placeholder="00.000.000/0000-00" />
-        </Field>
-        <Field label="Segmento">
-          <Input value={f.segmento} onChange={e => set('segmento', e.target.value)} placeholder="Ex: Alimentação" />
-        </Field>
-        <Field label="Responsável">
-          <Input value={f.responsavel} onChange={e => set('responsavel', e.target.value)} />
-        </Field>
-        <Field label="E-mail">
-          <Input value={f.email} type="email" onChange={e => set('email', e.target.value)} />
-        </Field>
-        <Field label="Telefone" span={2}>
-          <Input value={f.telefone} onChange={e => set('telefone', e.target.value)} placeholder="(00) 00000-0000" />
-        </Field>
-      </form>
-    </Modal>
   );
 }
 

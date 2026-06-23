@@ -35,6 +35,7 @@ function Icon({ name, size = 18, color = 'currentColor', strokeWidth = 2 }) {
     receipt: <><path d="M5 3h14v18l-3-2-3 2-3-2-3 2-2-1V3z" /><path d="M9 8h6M9 12h6M9 16h3" /></>,
     eye: <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z" /><circle cx="12" cy="12" r="3" /></>,
     chevronDown: <><path d="m6 9 6 6 6-6" /></>,
+    chevronUp: <><path d="m18 15-6-6-6 6" /></>,
     chevronRight: <><path d="m9 6 6 6-6 6" /></>,
     alert: <><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /></>,
     settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></>,
@@ -215,6 +216,7 @@ function CustomSelect({ value, onChange, options, placeholder = 'Selecionar', st
     <div ref={ref} style={{ position: 'relative', ...style }}>
       <button
         type="button"
+        className="custom-select-btn"
         disabled={disabled}
         onClick={() => !disabled && setOpen(o => !o)}
         style={{
@@ -512,6 +514,18 @@ const Validacao = {
   },
   senha(v) {
     return v.length >= 6 ? null : 'Senha deve ter pelo menos 6 caracteres';
+  },
+  telefone(v) {
+    if (!v) return null;
+    const nums = v.replace(/\D/g, '');
+    if (nums.length === 0) return null;
+    return nums.length === 10 || nums.length === 11 ? null : 'Telefone deve ter 10 ou 11 dígitos';
+  },
+  cep(v) {
+    if (!v) return null;
+    const nums = v.replace(/\D/g, '');
+    if (nums.length === 0) return null;
+    return nums.length === 8 ? null : 'CEP deve ter 8 dígitos';
   }
 };
 
@@ -607,4 +621,4 @@ function imprimirPDF(htmlStr, title = 'Documento') {
   win.document.close();
 }
 
-Object.assign(window, { Icon, Btn, Badge, Card, KPI, Modal, Field, Input, CustomSelect, Textarea, BarChart, DonutChart, LineChart, Legend, EmptyState, ToastProvider, useToast, useIsMobile, Validacao, maskCNPJ, maskTelefone, maskCEP, maskMoeda, ModalConfirmacao, LoadingSpinner, imprimirPDF });
+Object.assign(window, { Icon, Btn, Badge, Card, KPI, Modal, Field, Input, CustomSelect, Textarea, BarChart, DonutChart, LineChart, Legend, EmptyState, ToastProvider, useToast, useIsMobile, Validacao, maskCNPJ, maskTelefone, maskCEP, maskMoeda, ModalConfirmacao, LoadingSpinner, imprimirPDF, Toggle });

@@ -1,0 +1,4 @@
+## 2026-06-23T00:49:11Z
+You are Explorer 3 (UI/UX and Calendar Explorer).
+Your working directory is c:\Users\Yasmin\OneDrive\Documentos\financial-bpo-system\.agents\explorer_m1_3.
+Your task is to explore the UI/UX components related to (a) the 'Lançamentos' page, identifying where registrations of new entries happen, how we can make the 'Novo Lançamento' form or button highly prominent and intuitive directly on the page, and (b) dropdown calendars in all files, analyzing how they are currently styled and how we can improve their CSS (hover, focus, selection visibility). Check for any dead buttons with onClick={...} handlers that are not implemented. Write a structured handoff report handoff.md in your working directory containing your observations, logic chains, caveats, and conclusions. You must not modify code or run tests. When done, call send_message to report your findings to the parent orchestrator (conversation ID: 537f1403-d660-4159-b343-bc4ea82cf658).

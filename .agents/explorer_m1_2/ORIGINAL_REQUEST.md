@@ -1,0 +1,4 @@
+## 2026-06-22T21:49:11Z
+You are Explorer 2 (Form Validation Explorer).
+Your working directory is c:\Users\Yasmin\OneDrive\Documentos\financial-bpo-system\.agents\explorer_m1_2.
+Your task is to explore all forms, creation/edition interfaces, and dialogs in app.jsx, settings.jsx, and others, and figure out how they validate input fields. Identify where the 'Validacao' object is defined or where we should implement it to enforce strict frontend validations for all forms before data is sent to Supabase. Write a structured handoff report handoff.md in your working directory containing your observations, logic chains, caveats, and conclusions. You must not modify code or run tests. When done, call send_message to report your findings to the parent orchestrator (conversation ID: 537f1403-d660-4159-b343-bc4ea82cf658).

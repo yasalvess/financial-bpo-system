@@ -1,0 +1,4 @@
+## 2026-06-23T01:00:38Z
+You are Challenger 1.
+Your working directory is c:\Users\Yasmin\OneDrive\Documentos\financial-bpo-system\.agents\challenger_1.
+Your task is to empirically verify the correctness of the system's changes. Test the form validations (such as sending empty fields, invalid CNPJs, invalid emails, negative values) and verify that the validation triggers appropriately and Toast errors are displayed instead of browser alerts. Check that the RLS database rules in schema.sql correctly filter access by usuarios_empresas and owner_id. Run verification commands (like checking files or scripts) to ensure the system is operational. Write a structured handoff report handoff.md detailing your empirical checks, output logs, caveats, and verdict (PASS/FAIL). When done, call send_message to report your findings to the parent orchestrator (conversation ID: 537f1403-d660-4159-b343-bc4ea82cf658).

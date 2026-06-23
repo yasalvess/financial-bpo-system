@@ -1,7 +1,87 @@
 // Lançamentos globais + Relatórios consolidados
 const { useState: useState_L, useMemo: useMemo_L, useEffect: useEffect_L } = React;
 
-function LancamentosGlobais({ data, onOpenEmpresa }) {
+function LancamentoGlobalFormModal({ data, lanc, onClose, onSave }) {
+  const { useState: useState_M } = React;
+  const toast = useToast();
+  const [f, setF] = useState_M({ ...lanc, empresaId: lanc.empresaId || data.empresas[0]?.id || '' });
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  
+  const ccsFiltrados = data.centrosCusto.filter(c => c.tipo === f.tipo);
+
+  function submit(e) {
+    if (e) e.preventDefault();
+    if (!f.empresaId) return toast.push('Selecione uma empresa', 'error');
+    const errDesc = Validacao.required(f.descricao, 'Descrição');
+    if (errDesc) return toast.push(errDesc, 'error');
+    const errValor = Validacao.valor(f.valor);
+    if (errValor) return toast.push(errValor, 'error');
+    const errVenc = Validacao.required(f.vencimento, 'Vencimento');
+    if (errVenc) return toast.push(errVenc, 'error');
+
+    const cc = ccsFiltrados.find(c => c.id === f.centroCustoId) || ccsFiltrados[0];
+    onSave({ 
+      ...f, 
+      valor: +f.valor, 
+      centroCustoId: cc.id, 
+      competencia: competenciaFromDate(f.vencimento) 
+    });
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Novo Lançamento Global" width={560}
+      footer={<>
+        <Btn variant="ghost" onClick={onClose}>Cancelar</Btn>
+        <Btn variant="primary" onClick={submit}>Salvar Lançamento</Btn>
+      </>}>
+      <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <Field label="Empresa" required>
+          <CustomSelect value={f.empresaId} onChange={e => set('empresaId', e.target.value)} options={[
+            { value: '', label: 'Selecione uma empresa...' },
+            ...data.empresas.map(emp => ({ value: emp.id, label: emp.nome }))
+          ]} />
+        </Field>
+        
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <Field label="Tipo" required>
+            <CustomSelect value={f.tipo} onChange={e => {
+              set('tipo', e.target.value);
+              const firstCc = data.centrosCusto.find(c => c.tipo === e.target.value);
+              if (firstCc) set('centroCustoId', firstCc.id);
+            }} options={[
+              { value: 'entrada', label: 'Entrada' },
+              { value: 'saida', label: 'Saída' }
+            ]} />
+          </Field>
+          <Field label="Data de Vencimento" required><Input type="date" value={f.vencimento} onChange={e => set('vencimento', e.target.value)} /></Field>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <Field label="Valor (R$)" required><Input type="number" min="0" step="0.01" value={f.valor} onChange={e => set('valor', e.target.value)} placeholder="0,00" /></Field>
+          <Field label="Forma de Pagamento" required>
+            <CustomSelect value={f.formaPagamento} onChange={e => set('formaPagamento', e.target.value)} options={
+              data.formasPagamento.map(fp => ({ value: fp, label: fp }))
+            } />
+          </Field>
+        </div>
+        <Field label="Descrição" required><Input value={f.descricao} onChange={e => set('descricao', e.target.value)} placeholder="Ex: Pagamento de honorários" autoFocus /></Field>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <Field label="Portador" required>
+            <CustomSelect value={f.portadorId} onChange={e => set('portadorId', e.target.value)} options={
+              data.portadores.map(p => ({ value: p.id, label: p.nome }))
+            } />
+          </Field>
+          <Field label="Centro de Custo" required>
+            <CustomSelect value={f.centroCustoId} onChange={e => set('centroCustoId', e.target.value)} options={
+              ccsFiltrados.map(c => ({ value: c.id, label: c.nome }))
+            } />
+          </Field>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function LancamentosGlobais({ data, onOpenEmpresa, onUpsertLanc, onGoCentral }) {
   const [filtros, setFiltros] = useState_L({
     empresa: 'todas', tipo: 'todos', status: 'todos', portador: 'todos',
     centroCusto: 'todos', formaPgto: 'todos', dataIni: '', dataFim: '', busca: ''
@@ -10,6 +90,7 @@ function LancamentosGlobais({ data, onOpenEmpresa }) {
   const hoje = todayISO();
   const POR_PAGINA = 20;
   const [pagina, setPagina] = useState_L(1);
+  const [novoLanc, setNovoLanc] = useState_L(null);
 
   useEffect_L(() => setPagina(1), [filtros]);
 
@@ -44,15 +125,33 @@ function LancamentosGlobais({ data, onOpenEmpresa }) {
 
   return (
     <div style={{ padding: 28, maxWidth: 1500, margin: '0 auto' }}>
+      {novoLanc && (
+        <LancamentoGlobalFormModal 
+          data={data} 
+          lanc={novoLanc} 
+          onClose={() => setNovoLanc(null)} 
+          onSave={async (l) => {
+            const finalLanc = { id: uid('lanc'), ...l, pago: false };
+            await onUpsertLanc(finalLanc.empresaId, finalLanc);
+            setNovoLanc(null);
+            toast.push('Lançamento salvo com sucesso!');
+          }} 
+        />
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 22 }}>
         <div>
           <div style={{ fontSize: 12, color: 'var(--c-text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Lançamentos</div>
           <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, letterSpacing: '-0.02em' }}>Todos os Lançamentos</h1>
           <div style={{ fontSize: 13, color: 'var(--c-text-muted)', marginTop: 4 }}>Visão consolidada de {todos.length} lançamentos em {data.empresas.length} empresas</div>
         </div>
-        <Btn variant="primary" icon="download" onClick={() => { exportConsolidadoXLSX(data.empresas, data.lancamentos, data.portadores, data.centrosCusto); toast.push('Excel consolidado gerado'); }}>
-          Exportar Excel
-        </Btn>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <Btn variant="primary" icon="plus" onClick={() => setNovoLanc({ tipo: 'saida', vencimento: hoje, valor: '', descricao: '', portadorId: data.portadores[0]?.id || '', centroCustoId: data.centrosCusto.find(c => c.tipo === 'saida')?.id || '', formaPagamento: data.formasPagamento[0] || 'PIX' })}>
+            Novo Lançamento
+          </Btn>
+          <Btn variant="secondary" icon="download" onClick={() => { exportConsolidadoXLSX(data.empresas, data.lancamentos, data.portadores, data.centrosCusto); toast.push('Excel consolidado gerado'); }}>
+            Exportar Excel
+          </Btn>
+        </div>
       </div>
 
       <Card padding={14} style={{ marginBottom: 14 }}>
@@ -139,7 +238,27 @@ function LancamentosGlobais({ data, onOpenEmpresa }) {
             </tbody>
           </table>
         </div>
-        {totalFiltrados === 0 && <EmptyState icon="list" title="Sem lançamentos" hint="Nenhum lançamento bate com os filtros aplicados." />}
+        {totalFiltrados === 0 && (
+          <div style={{ textAlign:'center', padding:'48px 24px' }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>📋</div>
+            <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
+              Nenhum lançamento encontrado
+            </div>
+            <div style={{ fontSize: 13, color:'var(--c-text-muted)',
+              marginBottom: 20, maxWidth: 320, margin:'0 auto 20px' }}>
+              Cadastre uma empresa e comece a registrar
+              suas entradas e saídas financeiras.
+            </div>
+            <div style={{ display:'flex', gap:8, justifyContent:'center' }}>
+              <Btn variant="primary" onClick={() => setNovoLanc({ tipo: 'saida', vencimento: hoje, valor: '', descricao: '', portadorId: data.portadores[0]?.id || '', centroCustoId: data.centrosCusto.find(c => c.tipo === 'saida')?.id || '', formaPagamento: data.formasPagamento[0] || 'PIX' })}>
+                + Novo Lançamento
+              </Btn>
+              <Btn variant="secondary" onClick={onGoCentral}>
+                Cadastrar empresa →
+              </Btn>
+            </div>
+          </div>
+        )}
         
         {totalPaginas > 1 && (
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',

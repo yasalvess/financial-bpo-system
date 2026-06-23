@@ -68,11 +68,43 @@
   button { font-family: inherit; }
   table th, table td { vertical-align: middle; }
 
-  /* Inputs in dark mode */
   body.dark input, body.dark select, body.dark textarea {
     background: #1d1d27 !important; color: var(--c-text) !important; border-color: var(--c-border) !important;
   }
   body.dark input::placeholder, body.dark textarea::placeholder { color: #6b6f80; }
+
+  /* Inputs, select elements, textareas transitions, hover and focus glow styles */
+  input, select, textarea, .custom-select-btn {
+    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+  }
+  input:hover, select:hover, textarea:hover, .custom-select-btn:hover,
+  body.dark input:hover, body.dark select:hover, body.dark textarea:hover, body.dark .custom-select-btn:hover {
+    border-color: var(--c-primary) !important;
+  }
+  input:focus, select:focus, textarea:focus, .custom-select-btn:focus,
+  body.dark input:focus, body.dark select:focus, body.dark textarea:focus, body.dark .custom-select-btn:focus {
+    border-color: var(--c-primary) !important;
+    box-shadow: 0 0 0 3px var(--c-primary-soft) !important;
+    outline: none !important;
+  }
+
+  /* Native date picker calendar icon cursor & visibility effects */
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.15s ease-in-out;
+  }
+  input[type="date"]::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+  }
+  body.dark input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+    opacity: 0.8;
+  }
+  body.dark input[type="date"]::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+  }
+
 
   /* Print styles for comprovante */
   @media print {
