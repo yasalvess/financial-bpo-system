@@ -28,9 +28,9 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Checar se quem chamou é de fato admin
-    const { data: perfilAdmin } = await supabaseAdmin.from('perfis').select('cargo').eq('id', user.id).single();
-    if (perfilAdmin?.cargo !== 'admin' && perfilAdmin?.cargo !== 'Administrador(a)') {
+    // Checar se quem chamou é de fato admin (case-insensitive)
+    const cargoLower = (perfilAdmin?.cargo || '').toLowerCase();
+    if (!cargoLower.includes('admin') && !cargoLower.includes('administrador')) {
       throw new Error('Apenas administradores podem gerenciar usuários');
     }
 
@@ -51,7 +51,15 @@ serve(async (req) => {
         
         // Deletar o usuário no Supabase Auth (cascade apaga perfis e usuarios_empresas)
         const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(id);
-        if (deleteError) throw deleteError;
+        if (deleteError) {
+          const errorMsg = deleteError.message?.toLowerCase() || '';
+          if (errorMsg.includes('not found') || errorMsg.includes('inexistente') || deleteError.status === 404) {
+            // Se o usuário não existir no Auth, removemos o perfil diretamente no banco
+            await supabaseAdmin.from('perfis').delete().eq('id', id);
+          } else {
+            throw deleteError;
+          }
+        }
 
         if (perfilInfo && perfilInfo.email) {
           await supabaseAdmin.from('convites').delete().eq('email_convidado', perfilInfo.email);
