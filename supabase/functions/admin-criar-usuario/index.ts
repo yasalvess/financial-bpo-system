@@ -12,23 +12,22 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
-    );
-
-    // Pegar o ID do admin atual
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
-    if (authError || !user) throw new Error('Não autorizado');
-
     // Usar o service role para ignorar as RLS e ter permissões de admin
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) throw new Error('Não autorizado: Cabeçalho Authorization ausente');
+    const token = authHeader.replace('Bearer ', '');
+
+    // Pegar o ID do admin atual pelo token
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+    if (authError || !user) throw new Error('Não autorizado: Token inválido');
+
     // Checar se quem chamou é de fato admin (case-insensitive)
+    const { data: perfilAdmin } = await supabaseAdmin.from('perfis').select('cargo').eq('id', user.id).single();
     const cargoLower = (perfilAdmin?.cargo || '').toLowerCase();
     if (!cargoLower.includes('admin') && !cargoLower.includes('administrador')) {
       throw new Error('Apenas administradores podem gerenciar usuários');
