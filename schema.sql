@@ -364,3 +364,7 @@ ALTER TABLE public.preferencias_notificacao
   ADD COLUMN IF NOT EXISTS email_resumo_dia_semana integer default 1 not null,
   ADD COLUMN IF NOT EXISTS email_relatorio_mensal boolean default true not null;
 
+-- Adicionar coluna owner_id na tabela perfis para vinculação com o admin criador
+ALTER TABLE public.perfis
+  ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES auth.users(id) ON DELETE SET NULL;
+
