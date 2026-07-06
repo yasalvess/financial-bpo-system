@@ -34,6 +34,22 @@ function Configuracoes(props) {
   const [aba, setAba] = useState_S(initialTab || 'perfil');
   const isMobile = useIsMobile(768);
 
+  const cargoLower = (perfil?.cargo || '').toLowerCase();
+  const isVisualizador = cargoLower.includes('visualizador');
+  const isAnalista = cargoLower.includes('analista');
+
+  const abasFiltradas = useMemo_S(() => {
+    return ABAS_CONFIG.filter(aba => {
+      if (isVisualizador) {
+        return !['usuarios', 'portadores', 'centros', 'formas', 'backup'].includes(aba.id);
+      }
+      if (isAnalista) {
+        return !['usuarios', 'backup'].includes(aba.id);
+      }
+      return true;
+    });
+  }, [isVisualizador, isAnalista]);
+
   // Reage à navegação externa (dropdown de perfil / ícone ⚙️)
   useEffect_S(() => { if (initialTab) setAba(initialTab); }, [initialTab]);
 
@@ -45,7 +61,7 @@ function Configuracoes(props) {
         : { width: 240, background: 'var(--c-bg)', borderRight: '1px solid var(--c-border)', flexShrink: 0, padding: '20px 12px' }}>
         {!isMobile && <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0 10px 10px' }}>Configurações</div>}
         <nav style={{ display: 'flex', flexDirection: isMobile ? 'row' : 'column', gap: isMobile ? 6 : 2, overflowX: isMobile ? 'auto' : 'visible' }}>
-          {ABAS_CONFIG.map(a => {
+          {abasFiltradas.map(a => {
             const active = aba === a.id;
             return (
               <button key={a.id} onClick={() => setAba(a.id)} style={{
@@ -73,14 +89,14 @@ function Configuracoes(props) {
         <div style={{ maxWidth: 680, margin: '0 auto' }}>
           {aba === 'perfil' && <PerfilTab perfil={perfil} onUpdate={onUpdatePerfil} />}
           {aba === 'empresa' && <EmpresaInfoTab info={empresaInfo} onUpdate={onUpdateEmpresaInfo} />}
-          {aba === 'seguranca' && <AbaSeguranca session={session} />}
-          {aba === 'usuarios' && <AbaUsuarios session={session} data={data} />}
-          {aba === 'portadores' && <PortadoresConfigTab portadores={portadores} onSave={onSavePortador} onDelete={onDeletePortador} />}
-          {aba === 'centros' && <CentrosConfigTab centros={centrosCusto} onSave={onSaveCentro} onDelete={onDeleteCentro} />}
-          {aba === 'formas' && <FormasConfigTab formas={formasPagamento} onSave={onSaveForma} onDelete={onDeleteForma} />}
+          {aba === 'seguranca' && <AbaSeguranca session={session} perfil={perfil} />}
+          {aba === 'usuarios' && !isVisualizador && !isAnalista && <AbaUsuarios session={session} data={data} />}
+          {aba === 'portadores' && !isVisualizador && <PortadoresConfigTab portadores={portadores} onSave={onSavePortador} onDelete={onDeletePortador} />}
+          {aba === 'centros' && !isVisualizador && <CentrosConfigTab centros={centrosCusto} onSave={onSaveCentro} onDelete={onDeleteCentro} />}
+          {aba === 'formas' && !isVisualizador && <FormasConfigTab formas={formasPagamento} onSave={onSaveForma} onDelete={onDeleteForma} />}
           {aba === 'notificacoes' && <AbaNotificacoes session={session} />}
           {aba === 'aparencia' && <AparenciaTab tweaks={tweaks} setTweak={setTweak} colorOptions={colorOptions} fontOptions={fontOptions} />}
-          {aba === 'backup' && <AbaBackup data={props.data} />}
+          {aba === 'backup' && !isVisualizador && !isAnalista && <AbaBackup data={props.data} />}
         </div>
       </div>
     </div>
@@ -150,7 +166,14 @@ function PerfilTab({ perfil, onUpdate }) {
             {erros.email && <span style={{ fontSize:11, color:'#dc2626', marginTop:2 }}>{erros.email}</span>}
           </Field>
           <Field label="Telefone"><Input value={f.telefone || ''} onChange={e => set('telefone', e.target.value)} placeholder="(00) 00000-0000" /></Field>
-          <Field label="Cargo / Função" span={2}><Input value={f.cargo || ''} onChange={e => set('cargo', e.target.value)} /></Field>
+          <Field label="Cargo / Função" span={2}>
+            <Input 
+              value={f.cargo || ''} 
+              onChange={e => set('cargo', e.target.value)} 
+              disabled={perfil?.cargo?.toLowerCase()?.includes('visualizador')}
+              style={perfil?.cargo?.toLowerCase()?.includes('visualizador') ? { background: 'var(--c-surface)', cursor: 'not-allowed', color: 'var(--c-text-muted)' } : undefined}
+            />
+          </Field>
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 22 }}>
@@ -528,7 +551,7 @@ const iconBtnCfg = {
 // ABA 3: SEGURANÇA
 // =========================================================================
 
-function AbaSeguranca({ session }) {
+function AbaSeguranca({ session, perfil }) {
   const [senhaAtual, setSenhaAtual] = useState_S('');
   const [novaSenha, setNovaSenha] = useState_S('');
   const [confirmar, setConfirmar] = useState_S('');
@@ -536,6 +559,8 @@ function AbaSeguranca({ session }) {
   const toast = useToast();
 
   const [erros, setErros] = useState_S({});
+  
+  const isVisualizador = (perfil?.cargo || '').toLowerCase().includes('visualizador');
 
   async function alterarSenha() {
     const e = {};
@@ -623,33 +648,37 @@ function AbaSeguranca({ session }) {
       </SecaoConfig>
 
       {/* Encerrar sessões */}
-      <SecaoConfig titulo="Encerrar todas as sessões"
-        descricao="Sai da conta em todos os dispositivos onde você está conectado. Útil se perdeu acesso a algum dispositivo.">
-        <Btn variant="danger" onClick={sairTodosDispositivos}>
-          Sair de todos os dispositivos
-        </Btn>
-      </SecaoConfig>
+      {!isVisualizador && (
+        <SecaoConfig titulo="Encerrar todas as sessões"
+          descricao="Sai da conta em todos os dispositivos onde você está conectado. Útil se perdeu acesso a algum dispositivo.">
+          <Btn variant="danger" onClick={sairTodosDispositivos}>
+            Sair de todos os dispositivos
+          </Btn>
+        </SecaoConfig>
+      )}
 
       {/* Excluir conta */}
-      <SecaoConfig titulo="Zona de perigo"
-        descricao="Ações irreversíveis. Prossiga com cuidado.">
-        <div style={{ border:'1px solid #fecaca', borderRadius:10, padding:16, maxWidth:480 }}>
-          <div style={{ fontSize:13, fontWeight:600, color:'#991b1b', marginBottom:4 }}>
-            Excluir minha conta
+      {!isVisualizador && (
+        <SecaoConfig titulo="Zona de perigo"
+          descricao="Ações irreversíveis. Prossiga com cuidado.">
+          <div style={{ border:'1px solid #fecaca', borderRadius:10, padding:16, maxWidth:480 }}>
+            <div style={{ fontSize:13, fontWeight:600, color:'#991b1b', marginBottom:4 }}>
+              Excluir minha conta
+            </div>
+            <div style={{ fontSize:12, color:'var(--c-text-muted)', marginBottom:12, lineHeight:1.5 }}>
+              Remove permanentemente sua conta e todos os dados associados (empresas, lançamentos, configurações). Esta ação não pode ser desfeita.
+            </div>
+            <Btn variant="danger" onClick={() => {
+              if (prompt('Digite "EXCLUIR" para confirmar:') === 'EXCLUIR') {
+                window.supabaseClient.auth.signOut();
+                toast.push('Solicitação enviada. Conta será excluída em até 24h.', 'error');
+              }
+            }}>
+              Excluir minha conta
+            </Btn>
           </div>
-          <div style={{ fontSize:12, color:'var(--c-text-muted)', marginBottom:12, lineHeight:1.5 }}>
-            Remove permanentemente sua conta e todos os dados associados (empresas, lançamentos, configurações). Esta ação não pode ser desfeita.
-          </div>
-          <Btn variant="danger" onClick={() => {
-            if (prompt('Digite "EXCLUIR" para confirmar:') === 'EXCLUIR') {
-              window.supabaseClient.auth.signOut();
-              toast.push('Solicitação enviada. Conta será excluída em até 24h.', 'error');
-            }
-          }}>
-            Excluir minha conta
-          </Btn>
-        </div>
-      </SecaoConfig>
+        </SecaoConfig>
+      )}
     </div>
   );
 }
