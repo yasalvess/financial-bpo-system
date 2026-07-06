@@ -3,11 +3,31 @@ const { useState: useState_L, useMemo: useMemo_L, useEffect: useEffect_L } = Rea
 
 function LancamentoGlobalFormModal({ data, lanc, onClose, onSave }) {
   const { useState: useState_M } = React;
+  const isMobile = useIsMobile();
   const toast = useToast();
-  const [f, setF] = useState_M({ ...lanc, empresaId: lanc.empresaId || data.empresas[0]?.id || '' });
+  const [f, setF] = useState_M({ 
+    empresaId: lanc?.empresaId || data.empresas[0]?.id || '',
+    tipo: lanc?.tipo || 'saida',
+    descricao: lanc?.descricao || '',
+    valor: lanc?.valor || '',
+    vencimento: lanc?.vencimento || todayISO(),
+    formaPagamento: lanc?.formaPagamento || data.formasPagamento[0] || 'PIX',
+    portadorId: lanc?.portadorId || data.portadores[0]?.id || '',
+    centroCustoId: lanc?.centroCustoId || data.centrosCusto[0]?.id || '',
+  });
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
   
+  const [isParcelado, setIsParcelado] = useState_M(false);
+  const [numParcelas, setNumParcelas] = useState_M(2);
+
   const ccsFiltrados = data.centrosCusto.filter(c => c.tipo === f.tipo);
+
+  function addMonthsString(isoDateStr, numMonths) {
+    if (!isoDateStr) return '';
+    const d = new Date(isoDateStr + 'T12:00:00Z');
+    d.setUTCMonth(d.getUTCMonth() + numMonths);
+    return d.toISOString().split('T')[0];
+  }
 
   function submit(e) {
     if (e) e.preventDefault();
@@ -20,12 +40,41 @@ function LancamentoGlobalFormModal({ data, lanc, onClose, onSave }) {
     if (errVenc) return toast.push(errVenc, 'error');
 
     const cc = ccsFiltrados.find(c => c.id === f.centroCustoId) || ccsFiltrados[0];
-    onSave({ 
-      ...f, 
-      valor: +f.valor, 
-      centroCustoId: cc.id, 
-      competencia: competenciaFromDate(f.vencimento) 
-    });
+    const valOriginal = parseFloat(String(f.valor).replace(',', '.'));
+
+    if (isParcelado && numParcelas > 1) {
+      const baseVal = Math.floor((valOriginal * 100) / numParcelas) / 100;
+      const diff = Math.round((valOriginal - baseVal * numParcelas) * 100) / 100;
+      
+      const ref = uid('parc');
+      const parcelas = [];
+      for (let i = 0; i < numParcelas; i++) {
+        const vDate = i === 0 ? f.vencimento : addMonthsString(f.vencimento, i);
+        parcelas.push({
+          ...f,
+          id: uid('lanc'),
+          valor: i === numParcelas - 1 ? baseVal + diff : baseVal,
+          vencimento: vDate,
+          competencia: competenciaFromDate(vDate),
+          centroCustoId: cc.id,
+          parcelaRef: ref,
+          parcelaNum: i + 1,
+          parcelaTotal: numParcelas,
+          descricao: `${f.descricao} (${i + 1}/${numParcelas})`,
+          pago: false
+        });
+      }
+      onSave(parcelas);
+    } else {
+      onSave({ 
+        ...f, 
+        id: uid('lanc'),
+        valor: valOriginal, 
+        centroCustoId: cc.id, 
+        competencia: competenciaFromDate(f.vencimento),
+        pago: false
+      });
+    }
   }
 
   return (
@@ -42,7 +91,7 @@ function LancamentoGlobalFormModal({ data, lanc, onClose, onSave }) {
           ]} />
         </Field>
         
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
           <Field label="Tipo" required>
             <CustomSelect value={f.tipo} onChange={e => {
               set('tipo', e.target.value);
@@ -53,18 +102,34 @@ function LancamentoGlobalFormModal({ data, lanc, onClose, onSave }) {
               { value: 'saida', label: 'Saída' }
             ]} />
           </Field>
-          <Field label="Data de Vencimento" required><Input type="date" value={f.vencimento} onChange={e => set('vencimento', e.target.value)} /></Field>
+          <Field label="Data de Vencimento" required><DateInput value={f.vencimento} onChange={e => set('vencimento', e.target.value)} /></Field>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-          <Field label="Valor (R$)" required><Input type="number" min="0" step="0.01" value={f.valor} onChange={e => set('valor', e.target.value)} placeholder="0,00" /></Field>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
+          <Field label="Valor (R$)" required>
+            <Input type="number" min="0" step="0.01" value={f.valor} onChange={e => set('valor', e.target.value)} placeholder="0,00" />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 13, cursor: 'pointer' }}>
+              <input type="checkbox" checked={isParcelado} onChange={e => setIsParcelado(e.target.checked)} />
+              Parcelar lançamento
+            </label>
+          </Field>
           <Field label="Forma de Pagamento" required>
             <CustomSelect value={f.formaPagamento} onChange={e => set('formaPagamento', e.target.value)} options={
               data.formasPagamento.map(fp => ({ value: fp, label: fp }))
             } />
           </Field>
         </div>
+        {isParcelado && (
+          <Field label="Número de Parcelas">
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <Input type="number" min="2" max="120" value={numParcelas} onChange={e => setNumParcelas(parseInt(e.target.value) || 2)} style={{ width: 100 }} />
+              <span style={{ fontSize: 13, color: 'var(--c-text-muted)' }}>
+                {numParcelas} parcelas de aprox. {formatBRL((parseFloat(String(f.valor).replace(',','.')) || 0) / numParcelas)} / mês
+              </span>
+            </div>
+          </Field>
+        )}
         <Field label="Descrição" required><Input value={f.descricao} onChange={e => set('descricao', e.target.value)} placeholder="Ex: Pagamento de honorários" autoFocus /></Field>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
           <Field label="Portador" required>
             <CustomSelect value={f.portadorId} onChange={e => set('portadorId', e.target.value)} options={
               data.portadores.map(p => ({ value: p.id, label: p.nome }))
@@ -82,6 +147,7 @@ function LancamentoGlobalFormModal({ data, lanc, onClose, onSave }) {
 }
 
 function LancamentosGlobais({ data, onOpenEmpresa, onUpsertLanc, onGoCentral }) {
+  const isMobile = useIsMobile();
   const [filtros, setFiltros] = useState_L({
     empresa: 'todas', tipo: 'todos', status: 'todos', portador: 'todos',
     centroCusto: 'todos', formaPgto: 'todos', dataIni: '', dataFim: '', busca: ''
@@ -131,14 +197,13 @@ function LancamentosGlobais({ data, onOpenEmpresa, onUpsertLanc, onGoCentral }) 
           lanc={novoLanc} 
           onClose={() => setNovoLanc(null)} 
           onSave={async (l) => {
-            const finalLanc = { id: uid('lanc'), ...l, pago: false };
-            await onUpsertLanc(finalLanc);
+            await onUpsertLanc(l);
             setNovoLanc(null);
-            toast.push('Lançamento salvo com sucesso!');
+            toast.push(Array.isArray(l) ? `${l.length} lançamentos salvos com sucesso!` : 'Lançamento salvo com sucesso!');
           }} 
         />
       )}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 22 }}>
+      <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'flex-start', gap: 16, marginBottom: 22 }}>
         <div>
           <div style={{ fontSize: 12, color: 'var(--c-text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Lançamentos</div>
           <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, letterSpacing: '-0.02em' }}>Todos os Lançamentos</h1>
@@ -155,38 +220,38 @@ function LancamentosGlobais({ data, onOpenEmpresa, onUpsertLanc, onGoCentral }) 
       </div>
 
       <Card padding={14} style={{ marginBottom: 14 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr', gap: 8, alignItems: 'end' }}>
-          <Field label="Buscar"><Input value={filtros.busca} onChange={e => setFiltros({ ...filtros, busca: e.target.value })} placeholder="Descrição..." /></Field>
-          <Field label="Empresa"><CustomSelect value={filtros.empresa} onChange={e => setFiltros({ ...filtros, empresa: e.target.value })} options={[
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'end' }}>
+          <Field label="Buscar" style={{ flex: isMobile ? '1 1 100%' : '1.4 1 0' }}><Input value={filtros.busca} onChange={e => setFiltros({ ...filtros, busca: e.target.value })} placeholder="Descrição..." /></Field>
+          <Field label="Empresa" style={{ flex: isMobile ? '1 1 calc(50% - 4px)' : '1 1 0' }}><CustomSelect value={filtros.empresa} onChange={e => setFiltros({ ...filtros, empresa: e.target.value })} options={[
             { value: "todas", label: "Todas" },
             ...data.empresas.map(e => ({ value: e.id, label: e.nome }))
-          ]} /></Field>
-          <Field label="Tipo"><CustomSelect value={filtros.tipo} onChange={e => setFiltros({ ...filtros, tipo: e.target.value })} options={[
+          ]} style={{ minWidth: isMobile ? 0 : 140 }} /></Field>
+          <Field label="Tipo" style={{ flex: isMobile ? '1 1 calc(50% - 4px)' : '1 1 0' }}><CustomSelect value={filtros.tipo} onChange={e => setFiltros({ ...filtros, tipo: e.target.value })} options={[
             { value: "todos", label: "Todos" },
             { value: "entrada", label: "Entradas" },
             { value: "saida", label: "Saídas" }
-          ]} /></Field>
-          <Field label="Status"><CustomSelect value={filtros.status} onChange={e => setFiltros({ ...filtros, status: e.target.value })} options={[
+          ]} style={{ minWidth: isMobile ? 0 : 140 }} /></Field>
+          <Field label="Status" style={{ flex: isMobile ? '1 1 calc(50% - 4px)' : '1 1 0' }}><CustomSelect value={filtros.status} onChange={e => setFiltros({ ...filtros, status: e.target.value })} options={[
             { value: "todos", label: "Todos" },
             { value: "pago", label: "Pago" },
             { value: "em-dia", label: "Em dia" },
             { value: "vencendo", label: "Vencendo" },
             { value: "vencido", label: "Vencido" }
-          ]} /></Field>
-          <Field label="Portador"><CustomSelect value={filtros.portador} onChange={e => setFiltros({ ...filtros, portador: e.target.value })} options={[
+          ]} style={{ minWidth: isMobile ? 0 : 140 }} /></Field>
+          <Field label="Portador" style={{ flex: isMobile ? '1 1 calc(50% - 4px)' : '1 1 0' }}><CustomSelect value={filtros.portador} onChange={e => setFiltros({ ...filtros, portador: e.target.value })} options={[
             { value: "todos", label: "Todos" },
             ...data.portadores.map(p => ({ value: p.id, label: p.nome }))
-          ]} /></Field>
-          <Field label="Centro Custo"><CustomSelect value={filtros.centroCusto} onChange={e => setFiltros({ ...filtros, centroCusto: e.target.value })} options={[
+          ]} style={{ minWidth: isMobile ? 0 : 140 }} /></Field>
+          <Field label="Centro Custo" style={{ flex: isMobile ? '1 1 calc(50% - 4px)' : '1 1 0' }}><CustomSelect value={filtros.centroCusto} onChange={e => setFiltros({ ...filtros, centroCusto: e.target.value })} options={[
             { value: "todos", label: "Todos" },
             ...data.centrosCusto.map(c => ({ value: c.id, label: c.nome }))
-          ]} /></Field>
-          <Field label="De"><Input type="date" value={filtros.dataIni} onChange={e => setFiltros({ ...filtros, dataIni: e.target.value })} /></Field>
-          <Field label="Até"><Input type="date" value={filtros.dataFim} onChange={e => setFiltros({ ...filtros, dataFim: e.target.value })} /></Field>
+          ]} style={{ minWidth: isMobile ? 0 : 140 }} /></Field>
+          <Field label="De" style={{ flex: isMobile ? '1 1 calc(50% - 4px)' : '1 1 0' }}><DateInput value={filtros.dataIni} onChange={e => setFiltros({ ...filtros, dataIni: e.target.value })} /></Field>
+          <Field label="Até" style={{ flex: isMobile ? '1 1 calc(50% - 4px)' : '1 1 0' }}><DateInput value={filtros.dataFim} onChange={e => setFiltros({ ...filtros, dataFim: e.target.value })} /></Field>
         </div>
       </Card>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: 10, marginBottom: 14 }}>
         <Stat label="Lançamentos" v={filtrados.length} />
         <Stat label="Total Entradas" v={formatBRL(filtrados.filter(l => l.tipo === 'entrada').reduce((s, l) => s + l.valor, 0))} color="#16a34a" />
         <Stat label="Total Saídas" v={formatBRL(filtrados.filter(l => l.tipo === 'saida').reduce((s, l) => s + l.valor, 0))} color="#dc2626" />
@@ -194,8 +259,8 @@ function LancamentosGlobais({ data, onOpenEmpresa, onUpsertLanc, onGoCentral }) 
       </div>
 
       <Card padding={0}>
-        <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 480px)' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 10, border: '1px solid var(--c-border)', maxHeight: 'calc(100vh - 480px)' }}>
+          <table style={{ width: '100%', minWidth: isMobile ? 600 : '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: 'var(--c-bg)', borderBottom: '1px solid var(--c-border)', position: 'sticky', top: 0, zIndex: 1 }}>
                 <th style={th}>Empresa</th>
@@ -344,6 +409,7 @@ function mesesEntre(iniISO, fimISO) {
 
 // ----- Relatórios Consolidados -----
 function RelatoriosConsolidados({ data }) {
+  const isMobile = useIsMobile();
   const toast = useToast();
   const hoje = todayISO();
   const [cruzamento, setCruzamento] = useState_L('portador-empresa');
@@ -615,8 +681,8 @@ function RelatoriosConsolidados({ data }) {
         </div>
         {filtros.periodo === 'custom' && (
           <div style={{ display: 'flex', gap: 8, marginTop: 10, maxWidth: 360 }}>
-            <Field label="De"><Input type="date" value={filtros.dataIni} onChange={e => setFiltros({ ...filtros, dataIni: e.target.value })} /></Field>
-            <Field label="Até"><Input type="date" value={filtros.dataFim} onChange={e => setFiltros({ ...filtros, dataFim: e.target.value })} /></Field>
+            <Field label="De"><DateInput value={filtros.dataIni} onChange={e => setFiltros({ ...filtros, dataIni: e.target.value })} /></Field>
+            <Field label="Até"><DateInput value={filtros.dataFim} onChange={e => setFiltros({ ...filtros, dataFim: e.target.value })} /></Field>
           </div>
         )}
       </Card>
@@ -686,34 +752,36 @@ function RelatoriosConsolidados({ data }) {
             </div>
           ))}
         </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead>
-            <tr style={{ borderBottom: '1px solid var(--c-border)' }}>
-              <th style={th}>Mês</th>
-              <th style={{ ...th, textAlign: 'right' }}>Entradas previstas</th>
-              <th style={{ ...th, textAlign: 'right' }}>Saídas previstas</th>
-              <th style={{ ...th, textAlign: 'right' }}>Saldo projetado</th>
-            </tr>
-          </thead>
-          <tbody>
-            {fluxoProjetado.map((m, i) => (
-              <tr key={i} style={{ borderBottom: '1px solid var(--c-border)' }}>
-                <td style={td}><strong>{m.label}</strong></td>
-                <td style={{ ...td, textAlign: 'right', color: '#16a34a', fontVariantNumeric: 'tabular-nums' }}>{formatBRL(m.aReceber)}</td>
-                <td style={{ ...td, textAlign: 'right', color: '#dc2626', fontVariantNumeric: 'tabular-nums' }}>{formatBRL(m.aPagar)}</td>
-                <td style={{ ...td, textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: m.saldo >= 0 ? '#16a34a' : '#dc2626' }}>{formatBRL(m.saldo)}</td>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 10, border: '1px solid var(--c-border)' }}>
+          <table style={{ width: '100%', minWidth: isMobile ? 600 : '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--c-border)' }}>
+                <th style={th}>Mês</th>
+                <th style={{ ...th, textAlign: 'right' }}>Entradas previstas</th>
+                <th style={{ ...th, textAlign: 'right' }}>Saídas previstas</th>
+                <th style={{ ...th, textAlign: 'right' }}>Saldo projetado</th>
               </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr style={{ background: 'var(--c-bg)' }}>
-              <td style={{ ...td, fontWeight: 700 }}>TOTAL</td>
-              <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: '#16a34a', fontVariantNumeric: 'tabular-nums' }}>{formatBRL(totProjReceber)}</td>
-              <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: '#dc2626', fontVariantNumeric: 'tabular-nums' }}>{formatBRL(totProjPagar)}</td>
-              <td style={{ ...td, textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: (totProjReceber - totProjPagar) >= 0 ? '#16a34a' : '#dc2626' }}>{formatBRL(totProjReceber - totProjPagar)}</td>
-            </tr>
-          </tfoot>
-        </table>
+            </thead>
+            <tbody>
+              {fluxoProjetado.map((m, i) => (
+                <tr key={i} style={{ borderBottom: '1px solid var(--c-border)' }}>
+                  <td style={td}><strong>{m.label}</strong></td>
+                  <td style={{ ...td, textAlign: 'right', color: '#16a34a', fontVariantNumeric: 'tabular-nums' }}>{formatBRL(m.aReceber)}</td>
+                  <td style={{ ...td, textAlign: 'right', color: '#dc2626', fontVariantNumeric: 'tabular-nums' }}>{formatBRL(m.aPagar)}</td>
+                  <td style={{ ...td, textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: m.saldo >= 0 ? '#16a34a' : '#dc2626' }}>{formatBRL(m.saldo)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr style={{ background: 'var(--c-bg)' }}>
+                <td style={{ ...td, fontWeight: 700 }}>TOTAL</td>
+                <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: '#16a34a', fontVariantNumeric: 'tabular-nums' }}>{formatBRL(totProjReceber)}</td>
+                <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: '#dc2626', fontVariantNumeric: 'tabular-nums' }}>{formatBRL(totProjPagar)}</td>
+                <td style={{ ...td, textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: (totProjReceber - totProjPagar) >= 0 ? '#16a34a' : '#dc2626' }}>{formatBRL(totProjReceber - totProjPagar)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
         {fluxoProjetado.every(m => m.aReceber === 0 && m.aPagar === 0) && (
           <div style={{ padding: '16px 0 0', textAlign: 'center', fontSize: 13, color: 'var(--c-text-muted)' }}>Nenhum lançamento previsto no período.</div>
         )}
@@ -746,28 +814,30 @@ function RelatoriosConsolidados({ data }) {
                 );
               })}
             </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--c-border)' }}>
-                  <th style={th}>Forma</th>
-                  <th style={{ ...th, textAlign: 'right' }}>Entradas</th>
-                  <th style={{ ...th, textAlign: 'right' }}>Saídas</th>
-                  <th style={{ ...th, textAlign: 'right' }}>Total</th>
-                  <th style={{ ...th, textAlign: 'right' }}>% do total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {formasAnalise.rows.map(r => (
-                  <tr key={r.forma} style={{ borderBottom: '1px solid var(--c-border)' }}>
-                    <td style={td}><strong>{r.forma}</strong></td>
-                    <td style={{ ...td, textAlign: 'right', color: '#16a34a', fontVariantNumeric: 'tabular-nums' }}>{formatBRL(r.entradas)}</td>
-                    <td style={{ ...td, textAlign: 'right', color: '#dc2626', fontVariantNumeric: 'tabular-nums' }}>{formatBRL(r.saidas)}</td>
-                    <td style={{ ...td, textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{formatBRL(r.total)}</td>
-                    <td style={{ ...td, textAlign: 'right', color: 'var(--c-text-muted)', fontVariantNumeric: 'tabular-nums' }}>{formasAnalise.totalGeral > 0 ? ((r.total / formasAnalise.totalGeral) * 100).toFixed(1) : '0.0'}%</td>
+            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 10, border: '1px solid var(--c-border)' }}>
+              <table style={{ width: '100%', minWidth: isMobile ? 600 : '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--c-border)' }}>
+                    <th style={th}>Forma</th>
+                    <th style={{ ...th, textAlign: 'right' }}>Entradas</th>
+                    <th style={{ ...th, textAlign: 'right' }}>Saídas</th>
+                    <th style={{ ...th, textAlign: 'right' }}>Total</th>
+                    <th style={{ ...th, textAlign: 'right' }}>% do total</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {formasAnalise.rows.map(r => (
+                    <tr key={r.forma} style={{ borderBottom: '1px solid var(--c-border)' }}>
+                      <td style={td}><strong>{r.forma}</strong></td>
+                      <td style={{ ...td, textAlign: 'right', color: '#16a34a', fontVariantNumeric: 'tabular-nums' }}>{formatBRL(r.entradas)}</td>
+                      <td style={{ ...td, textAlign: 'right', color: '#dc2626', fontVariantNumeric: 'tabular-nums' }}>{formatBRL(r.saidas)}</td>
+                      <td style={{ ...td, textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{formatBRL(r.total)}</td>
+                      <td style={{ ...td, textAlign: 'right', color: 'var(--c-text-muted)', fontVariantNumeric: 'tabular-nums' }}>{formasAnalise.totalGeral > 0 ? ((r.total / formasAnalise.totalGeral) * 100).toFixed(1) : '0.0'}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </>
         )}
       </Card>
@@ -783,8 +853,8 @@ function RelatoriosConsolidados({ data }) {
           <KPI label="Títulos Vencidos" value={vencidos.length} icon="receipt" color="#f59e0b" />
           <KPI label="Mais Inadimplente" value={empresaMaisInadimplente ? empresaMaisInadimplente.nome : '—'} icon="building" color="var(--c-primary)" sub={empresaMaisInadimplente ? formatBRL(empresaMaisInadimplente.valor) : 'Sem inadimplência'} />
         </div>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 10, border: '1px solid var(--c-border)' }}>
+          <table style={{ width: '100%', minWidth: isMobile ? 600 : '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: 'var(--c-bg)', borderBottom: '1px solid var(--c-border)' }}>
                 <th style={th}>Empresa</th>
@@ -880,8 +950,8 @@ function RelatoriosConsolidados({ data }) {
             ))}
           </div>
         </div>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 10, border: '1px solid var(--c-border)' }}>
+          <table style={{ width: '100%', minWidth: isMobile ? 600 : '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: 'var(--c-bg)', borderBottom: '1px solid var(--c-border)' }}>
                 <th style={{ ...th, textAlign: 'center', width: 50 }}>#</th>
@@ -986,8 +1056,8 @@ function RelatoriosConsolidados({ data }) {
             ))}
           </div>
         </div>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 10, border: '1px solid var(--c-border)' }}>
+          <table style={{ width: '100%', minWidth: isMobile ? 600 : '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ background: 'var(--c-bg)' }}>
                 <th style={{ ...th, position: 'sticky', left: 0, background: 'var(--c-bg)', zIndex: 2 }}>Item</th>

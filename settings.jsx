@@ -100,33 +100,31 @@ function AbaHeader({ titulo, descricao }) {
 // ----- Aba 1: Meu Perfil -----
 function PerfilTab({ perfil, onUpdate }) {
   const toast = useToast();
+  const isMobile = useIsMobile();
   const [f, setF] = useState_S({ ...perfil });
-  const [senhas, setSenhas] = useState_S({ atual: '', nova: '', confirmar: '' });
+  const [erros, setErros] = useState_S({});
+  const [salvando, setSalvando] = useState_S(false);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
 
-  function salvar() {
-    const errNome = Validacao.required(f.nome, 'Nome');
-    if (errNome) return toast.push(errNome, 'error');
+  async function salvar() {
+    const e = {};
+    if (!f.nome?.trim()) e.nome = 'Nome obrigatório';
+    if (f.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email)) e.email = 'E-mail inválido';
 
-    const errEmail = f.email ? Validacao.email(f.email) : null;
-    if (errEmail) return toast.push(errEmail, 'error');
-
-    const errTelefone = f.telefone ? Validacao.telefone(f.telefone) : null;
-    if (errTelefone) return toast.push(errTelefone, 'error');
-
-    if (senhas.nova || senhas.confirmar || senhas.atual) {
-      const errSenha = Validacao.senha(senhas.nova);
-      if (errSenha) return toast.push('Nova senha: ' + errSenha, 'error');
-      if (senhas.nova !== senhas.confirmar) return toast.push('As senhas não coincidem', 'error');
+    if (Object.keys(e).length > 0) {
+      setErros(e);
+      return;
     }
-    onUpdate({ ...f, inicial: (f.nome || 'K').charAt(0).toUpperCase() });
-    setSenhas({ atual: '', nova: '', confirmar: '' });
-    toast.push('Perfil updated');
+    setErros({});
+    setSalvando(true);
+    await onUpdate({ ...f, inicial: (f.nome || 'K').charAt(0).toUpperCase() });
+    setSalvando(false);
+    toast.push('Perfil atualizado com sucesso!', 'success');
   }
 
   return (
     <div>
-      <AbaHeader titulo="Meu Perfil" descricao="Atualize seus dados pessoais e credenciais de acesso." />
+      <AbaHeader titulo="Meu Perfil" descricao="Atualize seus dados pessoais." />
       <Card>
         {/* Foto */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 22 }}>
@@ -142,23 +140,23 @@ function PerfilTab({ perfil, onUpdate }) {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-          <Field label="Nome completo" required span={2}><Input value={f.nome || ''} onChange={e => set('nome', e.target.value)} /></Field>
-          <Field label="E-mail"><Input type="email" value={f.email || ''} onChange={e => set('email', e.target.value)} /></Field>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
+          <Field label="Nome completo" required span={2} erro={erros.nome}>
+            <Input value={f.nome || ''} onChange={e => set('nome', e.target.value)} style={{ borderColor: erros.nome ? '#dc2626' : undefined }} />
+            {erros.nome && <span style={{ fontSize:11, color:'#dc2626', marginTop:2 }}>{erros.nome}</span>}
+          </Field>
+          <Field label="E-mail" erro={erros.email}>
+            <Input type="email" value={f.email || ''} onChange={e => set('email', e.target.value)} style={{ borderColor: erros.email ? '#dc2626' : undefined }} />
+            {erros.email && <span style={{ fontSize:11, color:'#dc2626', marginTop:2 }}>{erros.email}</span>}
+          </Field>
           <Field label="Telefone"><Input value={f.telefone || ''} onChange={e => set('telefone', e.target.value)} placeholder="(00) 00000-0000" /></Field>
           <Field label="Cargo / Função" span={2}><Input value={f.cargo || ''} onChange={e => set('cargo', e.target.value)} /></Field>
         </div>
 
-        <div style={{ borderTop: '1px solid var(--c-border)', margin: '22px 0 18px' }} />
-        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Alterar senha</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
-          <Field label="Senha atual"><Input type="password" value={senhas.atual} onChange={e => setSenhas({ ...senhas, atual: e.target.value })} placeholder="••••••••" /></Field>
-          <Field label="Nova senha"><Input type="password" value={senhas.nova} onChange={e => setSenhas({ ...senhas, nova: e.target.value })} placeholder="••••••••" /></Field>
-          <Field label="Confirmar senha"><Input type="password" value={senhas.confirmar} onChange={e => setSenhas({ ...senhas, confirmar: e.target.value })} placeholder="••••••••" /></Field>
-        </div>
-
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 22 }}>
-          <Btn variant="primary" icon="check" onClick={salvar}>Salvar alterações</Btn>
+          <Btn variant="primary" icon="check" onClick={salvar} disabled={salvando}>
+            {salvando ? <><LoadingSpinner size={14} color="#fff" /> Salvando...</> : 'Salvar alterações'}
+          </Btn>
         </div>
       </Card>
     </div>
@@ -168,6 +166,7 @@ function PerfilTab({ perfil, onUpdate }) {
 // ----- Aba 2: Minha Empresa (escritório dono do sistema) -----
 function EmpresaInfoTab({ info, onUpdate }) {
   const toast = useToast();
+  const isMobile = useIsMobile();
   const [f, setF] = useState_S({ ...info });
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
 
@@ -209,7 +208,7 @@ function EmpresaInfoTab({ info, onUpdate }) {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
           <Field label="Razão Social" required span={2}><Input value={f.razaoSocial || ''} onChange={e => set('razaoSocial', e.target.value)} /></Field>
           <Field label="Nome Fantasia"><Input value={f.nomeFantasia || ''} onChange={e => set('nomeFantasia', e.target.value)} /></Field>
           <Field label="CNPJ"><Input value={f.cnpj || ''} onChange={e => set('cnpj', e.target.value)} placeholder="00.000.000/0000-00" /></Field>
@@ -536,14 +535,20 @@ function AbaSeguranca({ session }) {
   const [loading, setLoading] = useState_S(false);
   const toast = useToast();
 
+  const [erros, setErros] = useState_S({});
+
   async function alterarSenha() {
-    const errAtual = Validacao.required(senhaAtual, 'Senha atual');
-    if (errAtual) return toast.push(errAtual, 'error');
-
+    const e = {};
+    if (!senhaAtual) e.atual = 'Senha atual obrigatória';
     const errNova = Validacao.senha(novaSenha);
-    if (errNova) return toast.push(errNova, 'error');
+    if (errNova) e.nova = errNova;
+    if (novaSenha !== confirmar) e.confirmar = 'As senhas não coincidem';
 
-    if (novaSenha !== confirmar) return toast.push('As senhas não coincidem', 'error');
+    if (Object.keys(e).length > 0) {
+      setErros(e);
+      return;
+    }
+    setErros({});
     setLoading(true);
     // Reautentica com senha atual primeiro
     const { error: errReauth } = await window.supabaseClient.auth.signInWithPassword({
@@ -555,7 +560,7 @@ function AbaSeguranca({ session }) {
     const { error } = await window.supabaseClient.auth.updateUser({ password: novaSenha });
     if (error) { toast.push('Erro ao alterar senha', 'error'); }
     else {
-      toast.push('Senha alterada com sucesso!');
+      toast.push('Senha alterada com sucesso!', 'success');
       setSenhaAtual(''); setNovaSenha(''); setConfirmar('');
     }
     setLoading(false);
@@ -574,18 +579,21 @@ function AbaSeguranca({ session }) {
       <SecaoConfig titulo="Alterar senha"
         descricao="Recomendamos usar uma senha forte com letras, números e símbolos.">
         <div style={{ display:'grid', gridTemplateColumns:'1fr', gap:12, maxWidth:480 }}>
-          <Field label="Senha atual" required>
+          <Field label="Senha atual" required erro={erros.atual}>
             <Input type="password" value={senhaAtual}
-              onChange={e => setSenhaAtual(e.target.value)} placeholder="••••••••" />
+              onChange={e => setSenhaAtual(e.target.value)} placeholder="••••••••" style={{ borderColor: erros.atual ? '#dc2626' : undefined }} />
+            {erros.atual && <span style={{ fontSize:11, color:'#dc2626', marginTop:2 }}>{erros.atual}</span>}
           </Field>
-          <Field label="Nova senha" required>
+          <Field label="Nova senha" required erro={erros.nova}>
             <Input type="password" value={novaSenha}
-              onChange={e => setNovaSenha(e.target.value)} placeholder="Mínimo 6 caracteres" />
+              onChange={e => setNovaSenha(e.target.value)} placeholder="Mínimo 6 caracteres" style={{ borderColor: erros.nova ? '#dc2626' : undefined }} />
+            {erros.nova && <span style={{ fontSize:11, color:'#dc2626', marginTop:2 }}>{erros.nova}</span>}
             <IndicadorForcaSenha senha={novaSenha} />
           </Field>
-          <Field label="Confirmar nova senha" required>
+          <Field label="Confirmar nova senha" required erro={erros.confirmar}>
             <Input type="password" value={confirmar}
-              onChange={e => setConfirmar(e.target.value)} placeholder="Repita a nova senha" />
+              onChange={e => setConfirmar(e.target.value)} placeholder="Repita a nova senha" style={{ borderColor: erros.confirmar ? '#dc2626' : undefined }} />
+            {erros.confirmar && <span style={{ fontSize:11, color:'#dc2626', marginTop:2 }}>{erros.confirmar}</span>}
           </Field>
           <div>
             <Btn variant="primary" disabled={loading || !senhaAtual || !novaSenha || !confirmar}
@@ -722,6 +730,9 @@ function AbaUsuarios({ session, data }) {
     const { data: perfis } = await window.supabaseClient.from('perfis')
       .select('*').eq('owner_id', session.user.id).order('created_at', { ascending: false });
     
+    const { data: convs } = await window.supabaseClient.from('convites')
+      .select('*').eq('user_id', session.user.id).eq('status', 'pendente').order('created_at', { ascending: false });
+
     const { data: vinculacoes } = await window.supabaseClient.from('usuarios_empresas').select('*');
 
     const mapVinculacoes = {};
@@ -731,23 +742,69 @@ function AbaUsuarios({ session, data }) {
         mapVinculacoes[v.user_id].push(v.empresa_id);
       });
     }
-    setConvites(perfis || []);
+    
+    const lista = [];
+    if (perfis) lista.push(...perfis);
+    if (convs) {
+      convs.forEach(c => lista.push({
+        id: c.id, nome: c.nome || c.email_convidado, email: c.email_convidado,
+        cargo: c.papel, status: 'pendente', isConvite: true, empresas_ids: c.empresas_ids
+      }));
+    }
+    setConvites(lista);
     setUsuariosEmpresas(mapVinculacoes);
   }
 
+  const [erros, setErros] = useState_S({});
+  const [confirmRevogar, setConfirmRevogar] = useState_S(null); // { id, isConvite }
+
+  async function revogarAcesso(id, isConvite) {
+    setConfirmRevogar({ id, isConvite });
+  }
+
+  async function executarExclusao() {
+    if (!confirmRevogar) return;
+    setLoading(true);
+    try {
+      const response = await window.supabaseClient.functions.invoke('admin-criar-usuario', {
+        body: {
+          action: 'delete',
+          id: confirmRevogar.id,
+          isConvite: confirmRevogar.isConvite
+        }
+      });
+      if (response.error) throw new Error(response.error.message || 'Erro ao revogar acesso');
+      
+      toast.push('Acesso revogado com sucesso!', 'success');
+      setConfirmRevogar(null);
+      carregarConvites();
+    } catch (err) {
+      toast.push(err.message, 'error');
+    }
+    setLoading(false);
+  }
+
   async function criarUsuario() {
-    const errNome = Validacao.required(nomeNovo, 'Nome');
-    if (errNome) return toast.push(errNome, 'error');
-
-    const errEmail = Validacao.email(emailNovo);
-    if (errEmail) return toast.push(errEmail, 'error');
-
+    const e = {};
+    if (!nomeNovo?.trim()) e.nome = 'Nome obrigatório';
+    if (!emailNovo?.trim()) e.email = 'E-mail obrigatório';
+    else {
+      const errEmail = Validacao.email(emailNovo);
+      if (errEmail) e.email = errEmail;
+    }
     const errSenha = Validacao.senha(senhaNova);
-    if (errSenha) return toast.push(errSenha, 'error');
+    if (errSenha) e.senha = errSenha;
 
     if (papelNovo !== 'admin' && empresasSelecionadas.length === 0) {
-      toast.push('Selecione pelo menos uma empresa', 'error'); return;
+      toast.push('Selecione pelo menos uma empresa', 'error');
+      return;
     }
+
+    if (Object.keys(e).length > 0) {
+      setErros(e);
+      return;
+    }
+    setErros({});
 
     setLoading(true);
     try {
@@ -762,7 +819,7 @@ function AbaUsuarios({ session, data }) {
       });
       if (response.error) throw new Error(response.error.message || 'Erro ao criar usuário');
       
-      toast.push(`Usuário ${nomeNovo} criado com sucesso!`);
+      toast.push(`Convite criado com sucesso para ${nomeNovo}!`, 'success');
       setNomeNovo(''); setEmailNovo(''); setSenhaNova(''); setEmpresasSelecionadas([]);
       carregarConvites();
     } catch (err) {
@@ -771,12 +828,14 @@ function AbaUsuarios({ session, data }) {
     setLoading(false);
   }
 
-  async function revogarAcesso(id) {
-    if (!confirm('Remover este usuário permanentemente?')) return;
-    toast.push('Para exclusão completa, acesse o painel do Supabase.', 'error');
-  }
-
-  const corPapel = { admin:'#7c3aed', analista:'var(--c-primary)', visualizador:'#64748b', 'Administrador(a)':'#7c3aed', 'Analista':'var(--c-primary)', 'Visualizador':'#64748b' };
+  const corPapel = { admin:'#7c3aed', operador:'var(--c-primary)', analista:'var(--c-primary)', visualizador:'#64748b', 'Administrador(a)':'#7c3aed', 'Analista':'var(--c-primary)', 'Visualizador':'#64748b' };
+  
+  const PAPEL_LABELS = {
+    admin: 'Administrador',
+    operador: 'Analista',
+    analista: 'Analista',
+    visualizador: 'Visualizador'
+  };
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:24 }}>
@@ -785,17 +844,20 @@ function AbaUsuarios({ session, data }) {
       <SecaoConfig titulo="Criar novo usuário" descricao="Crie uma conta para um funcionário ou cliente e libere acesso a empresas específicas.">
         <div style={{ display:'flex', flexDirection:'column', gap:14, maxWidth:600 }}>
           <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-            <Field label="Nome Completo" style={{ flex:1, minWidth:200 }}>
-              <Input value={nomeNovo} onChange={e => setNomeNovo(e.target.value)} placeholder="João Silva" />
+            <Field label="Nome Completo" style={{ flex:1, minWidth:200 }} erro={erros.nome}>
+              <Input value={nomeNovo} onChange={e => setNomeNovo(e.target.value)} placeholder="João Silva" style={{ borderColor: erros.nome ? '#dc2626' : undefined }} />
+              {erros.nome && <span style={{ fontSize:11, color:'#dc2626', marginTop:2 }}>{erros.nome}</span>}
             </Field>
-            <Field label="E-mail" style={{ flex:1, minWidth:200 }}>
-              <Input type="email" value={emailNovo} onChange={e => setEmailNovo(e.target.value)} placeholder="joao@empresa.com" />
+            <Field label="E-mail" style={{ flex:1, minWidth:200 }} erro={erros.email}>
+              <Input type="email" value={emailNovo} onChange={e => setEmailNovo(e.target.value)} placeholder="joao@empresa.com" style={{ borderColor: erros.email ? '#dc2626' : undefined }} />
+              {erros.email && <span style={{ fontSize:11, color:'#dc2626', marginTop:2 }}>{erros.email}</span>}
             </Field>
           </div>
           
           <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-            <Field label="Senha Temporária" style={{ flex:1, minWidth:200 }}>
-              <Input type="text" value={senhaNova} onChange={e => setSenhaNova(e.target.value)} placeholder="Defina uma senha" />
+            <Field label="Senha Temporária" style={{ flex:1, minWidth:200 }} erro={erros.senha}>
+              <Input type="text" value={senhaNova} onChange={e => setSenhaNova(e.target.value)} placeholder="Defina uma senha" style={{ borderColor: erros.senha ? '#dc2626' : undefined }} />
+              {erros.senha && <span style={{ fontSize:11, color:'#dc2626', marginTop:2 }}>{erros.senha}</span>}
             </Field>
             <Field label="Cargo / Papel" style={{ flex:1, minWidth:200 }}>
               <CustomSelect value={papelNovo} onChange={e => {
@@ -891,7 +953,7 @@ function AbaUsuarios({ session, data }) {
           <div style={{ display:'flex', flexDirection:'column', gap:8, maxWidth:600 }}>
             {convites.map(c => {
               const cor = corPapel[c.cargo] || 'var(--c-primary)';
-              const vinculadas = usuariosEmpresas[c.id] || [];
+              const vinculadas = c.isConvite ? (c.empresas_ids || []) : (usuariosEmpresas[c.id] || []);
               const nomesEmpresas = data.empresas.filter(e=>vinculadas.includes(e.id)).map(e=>e.nome).join(', ');
               
               return (
@@ -900,17 +962,20 @@ function AbaUsuarios({ session, data }) {
                   {c.nome.charAt(0).toUpperCase()}
                 </div>
                 <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:13, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.nome}</div>
+                  <div style={{ fontSize:13, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {c.nome}
+                    {c.status === 'pendente' && <Badge status="pendente" />}
+                  </div>
                   <div style={{ fontSize:12, color:'var(--c-text-muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.email}</div>
                   <div style={{ display:'flex', gap:8, alignItems:'center', marginTop:4 }}>
-                    <span style={{ fontSize:11, fontWeight:600, color: cor }}>{c.cargo}</span>
+                    <span style={{ fontSize:11, fontWeight:600, color: cor }}>{PAPEL_LABELS[c.cargo] || c.cargo}</span>
                     <span style={{ fontSize:11, color:'var(--c-text-muted)' }}>·</span>
                     <span style={{ fontSize:11, color:'var(--c-text-muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={nomesEmpresas}>
                       {vinculadas.length} empresa(s)
                     </span>
                   </div>
                 </div>
-                <button onClick={() => revogarAcesso(c.id)} style={{ background:'none', border:'1px solid var(--c-border)', borderRadius:6, padding:'4px 10px', cursor:'pointer', fontSize:12, color:'var(--c-text-muted)', fontFamily:'inherit' }}>
+                <button onClick={() => revogarAcesso(c.id, c.isConvite)} style={{ background:'none', border:'1px solid var(--c-border)', borderRadius:6, padding:'4px 10px', cursor:'pointer', fontSize:12, color:'var(--c-text-muted)', fontFamily:'inherit' }}>
                   Remover
                 </button>
               </div>
@@ -918,6 +983,18 @@ function AbaUsuarios({ session, data }) {
           </div>
         )}
       </SecaoConfig>
+      
+      {confirmRevogar && (
+        <ModalConfirmacao
+          open={true}
+          titulo="Remover Usuário"
+          mensagem="Tem certeza que deseja remover este usuário e revogar todos os seus acessos? Esta ação excluirá a conta dele permanentemente."
+          labelConfirmar="Sim, Remover"
+          corConfirmar="#dc2626"
+          onConfirmar={executarExclusao}
+          onCancelar={() => setConfirmRevogar(null)}
+        />
+      )}
     </div>
   );
 }
@@ -949,8 +1026,8 @@ function AbaNotificacoes({ session }) {
     setLoading(true);
     const { data } = await window.supabaseClient
       .from('preferencias_notificacao')
-      .select('*').eq('user_id', session.user.id).single();
-    if (data) setPrefs(data);
+      .select('*').eq('user_id', session.user.id);
+    if (data && data.length > 0) setPrefs(data[0]);
     setLoading(false);
   }
 

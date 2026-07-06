@@ -86,3 +86,14 @@ function normalizeCentro(c) {
 }
 
 Object.assign(window, { useAppData });
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState_H(window.innerWidth < 768)
+  useEffect_H(() => {
+    const fn = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener('resize', fn)
+    return () => window.removeEventListener('resize', fn)
+  }, [])
+  return isMobile
+}
+Object.assign(window, { useIsMobile })

@@ -71,6 +71,7 @@ function WorkspaceEmpresa({ empresa, lancamentos, portadores, centrosCusto, form
       </div>
 
       {novoLancHeader && (
+        <LancamentoErrorBoundary onClose={() => setNovoLancHeader(null)}>
         <LancamentoFormModal
           lanc={novoLancHeader}
           portadores={portadores}
@@ -82,6 +83,7 @@ function WorkspaceEmpresa({ empresa, lancamentos, portadores, centrosCusto, form
             setNovoLancHeader(null);
           }}
         />
+        </LancamentoErrorBoundary>
       )}
     </div>
   );
@@ -89,6 +91,7 @@ function WorkspaceEmpresa({ empresa, lancamentos, portadores, centrosCusto, form
 
 // ----- Tab 1: Contas -----
 function ContasTab({ empresa, lancamentos, portadores, centrosCusto, formasPagamento, onUpsertLanc, onDeleteLanc, onPayLanc }) {
+  const isMobile = useIsMobile();
   const [filtros, setFiltros] = useState_W({
     tipo: 'todos', status: 'todos', portador: 'todos', centroCusto: 'todos',
     formaPgto: 'todos', dataIni: '', dataFim: '', busca: ''
@@ -111,7 +114,8 @@ function ContasTab({ empresa, lancamentos, portadores, centrosCusto, formasPagam
     pago: false,
     portadorId: portadores[0]?.id || '',
     centroCustoId: centrosCusto.find(c => c.tipo === 'saida')?.id || centrosCusto[0]?.id || '',
-    formaPagamento: formasPagamento[0] || 'PIX'
+    formaPagamento: formasPagamento[0] || 'PIX',
+    parcelas: 1
   });
 
   const setInlineVal = (k, v) => {
@@ -126,55 +130,88 @@ function ContasTab({ empresa, lancamentos, portadores, centrosCusto, formasPagam
 
   const ccsFiltradosInline = centrosCusto.filter(c => c.tipo === fInline.tipo);
 
-  function submitInline(e) {
-    e?.preventDefault();
-    
-    const errTipo = Validacao.required(fInline.tipo, 'Tipo');
-    if (errTipo) return toast.push(errTipo, 'error');
-    
-    const errDesc = Validacao.required(fInline.descricao, 'Descrição');
-    if (errDesc) return toast.push(errDesc, 'error');
-    
-    const errValorReq = Validacao.required(fInline.valor, 'Valor');
-    if (errValorReq) return toast.push(errValorReq, 'error');
-    const errValor = Validacao.valor(fInline.valor);
-    if (errValor) return toast.push(errValor, 'error');
-    
-    const errVenc = Validacao.required(fInline.vencimento, 'Vencimento');
-    if (errVenc) return toast.push(errVenc, 'error');
-    
-    const errPago = Validacao.required(fInline.pago !== null && fInline.pago !== undefined ? String(fInline.pago) : '', 'Status Pago');
-    if (errPago) return toast.push(errPago, 'error');
-    
-    const errPortador = Validacao.required(fInline.portadorId, 'Portador');
-    if (errPortador) return toast.push(errPortador, 'error');
-    
-    const errCc = Validacao.required(fInline.centroCustoId, 'Centro de Custo');
-    if (errCc) return toast.push(errCc, 'error');
-    
-    const errFp = Validacao.required(fInline.formaPagamento, 'Forma de Pagamento');
-    if (errFp) return toast.push(errFp, 'error');
+  const [errosInline, setErrosInline] = useState_W({});
+  const [salvandoInline, setSalvandoInline] = useState_W(false);
 
-    onUpsertLanc({
-      id: uid('lanc'),
-      ...fInline,
-      valor: parseFloat(fInline.valor),
-      empresaId: empresa.id,
-      competencia: competenciaFromDate(fInline.vencimento)
-    });
-    
-    setFInline({
-      tipo: 'saida',
-      descricao: '',
-      valor: '',
-      vencimento: todayISO(),
-      pago: false,
-      portadorId: portadores[0]?.id || '',
-      centroCustoId: centrosCusto.find(c => c.tipo === 'saida')?.id || centrosCusto[0]?.id || '',
-      formaPagamento: formasPagamento[0] || 'PIX'
-    });
-    
-    toast.push('Lançamento cadastrado com sucesso!');
+  function addMonthsString(isoDateStr, numMonths) {
+    if (!isoDateStr) return '';
+    const d = new Date(isoDateStr + 'T12:00:00Z');
+    d.setUTCMonth(d.getUTCMonth() + numMonths);
+    return d.toISOString().split('T')[0];
+  }
+
+  async function submitInline(e) {
+    e?.preventDefault();
+    const e_val = {};
+    if (!fInline.tipo) e_val.tipo = 'Tipo obrigatório';
+    if (!fInline.descricao?.trim()) e_val.descricao = 'Descrição obrigatória';
+    const val = parseFloat(String(fInline.valor).replace(',', '.'));
+    if (!val || val <= 0) e_val.valor = 'Valor deve ser maior que zero';
+    if (!fInline.vencimento) e_val.vencimento = 'Vencimento obrigatório';
+    if (fInline.pago === null || fInline.pago === undefined) e_val.pago = 'Status pago obrigatório';
+    if (!fInline.portadorId) e_val.portadorId = 'Portador obrigatório';
+    if (!fInline.centroCustoId) e_val.centroCustoId = 'Centro de Custo obrigatório';
+    if (!fInline.formaPagamento) e_val.formaPagamento = 'Forma de Pagamento obrigatória';
+
+    if (Object.keys(e_val).length > 0) {
+      setErrosInline(e_val);
+      return;
+    }
+    setErrosInline({});
+
+    const numParc = parseInt(fInline.parcelas) || 1;
+
+    setSalvandoInline(true);
+    try {
+      if (numParc > 1) {
+        const baseVal = Math.floor((val * 100) / numParc) / 100;
+        const diff = Math.round((val - baseVal * numParc) * 100) / 100;
+        
+        const ref = uid('parc');
+        const payloadArr = [];
+        
+        for (let i = 0; i < numParc; i++) {
+          const vDate = i === 0 ? fInline.vencimento : addMonthsString(fInline.vencimento, i);
+          payloadArr.push({
+            ...fInline,
+            id: uid('lanc'),
+            valor: i === numParc - 1 ? baseVal + diff : baseVal,
+            vencimento: vDate,
+            competencia: competenciaFromDate(vDate),
+            empresaId: empresa.id,
+            parcelaRef: ref,
+            parcelaNum: i + 1,
+            parcelaTotal: numParc,
+            descricao: `${fInline.descricao} (${i + 1}/${numParc})`
+          });
+        }
+        await onUpsertLanc(payloadArr);
+      } else {
+        await onUpsertLanc({
+          id: uid('lanc'),
+          ...fInline,
+          valor: val,
+          empresaId: empresa.id,
+          competencia: competenciaFromDate(fInline.vencimento)
+        });
+      }
+      
+      setFInline({
+        tipo: 'saida',
+        descricao: '',
+        valor: '',
+        vencimento: todayISO(),
+        pago: false,
+        portadorId: portadores[0]?.id || '',
+        centroCustoId: centrosCusto.find(c => c.tipo === 'saida')?.id || centrosCusto[0]?.id || '',
+        formaPagamento: formasPagamento[0] || 'PIX',
+        parcelas: 1
+      });
+      
+      toast.push('Lançamento cadastrado com sucesso!', 'success');
+    } finally {
+      setSalvandoInline(false);
+    }
   }
 
   useEffect_W(() => setPagina(1), [filtros]);
@@ -250,52 +287,58 @@ function ContasTab({ empresa, lancamentos, portadores, centrosCusto, formasPagam
               gap: 12, 
               alignItems: 'end' 
             }}>
-              <Field label="Tipo" required>
+              <Field label="Tipo" required erro={errosInline.tipo}>
                 <CustomSelect value={fInline.tipo} onChange={e => setInlineVal('tipo', e.target.value)} options={[
                   { value: 'entrada', label: 'Entrada' },
                   { value: 'saida', label: 'Saída' }
-                ]} />
+                ]} style={{ borderColor: errosInline.tipo ? '#dc2626' : undefined }} />
               </Field>
               
-              <Field label="Descrição" required>
-                <Input id="inline-descricao" value={fInline.descricao} onChange={e => setInlineVal('descricao', e.target.value)} placeholder="Ex: Conta de luz" />
+              <Field label="Descrição" required erro={errosInline.descricao}>
+                <Input id="inline-descricao" value={fInline.descricao} onChange={e => setInlineVal('descricao', e.target.value)} placeholder="Ex: Conta de luz" style={{ borderColor: errosInline.descricao ? '#dc2626' : undefined }} />
               </Field>
               
-              <Field label="Valor (R$)" required>
-                <Input type="number" min="0" step="0.01" value={fInline.valor} onChange={e => setInlineVal('valor', e.target.value)} placeholder="0,00" />
+              <Field label="Valor (R$)" required erro={errosInline.valor}>
+                <Input type="number" min="0" step="0.01" value={fInline.valor} onChange={e => setInlineVal('valor', e.target.value)} placeholder="0,00" style={{ borderColor: errosInline.valor ? '#dc2626' : undefined }} />
+              </Field>
+
+              <Field label="Parcelas">
+                <Input type="number" min="1" max="120" value={fInline.parcelas} onChange={e => setInlineVal('parcelas', parseInt(e.target.value) || 1)} />
               </Field>
               
-              <Field label="Vencimento" required>
-                <Input type="date" value={fInline.vencimento} onChange={e => setInlineVal('vencimento', e.target.value)} />
+              <Field label="Vencimento" required erro={errosInline.vencimento}>
+                <DateInput value={fInline.vencimento} onChange={e => setInlineVal('vencimento', e.target.value)} style={{ border: errosInline.vencimento ? '1px solid #dc2626' : undefined }} />
               </Field>
               
-              <Field label="Status" required>
+              <Field label="Status" required erro={errosInline.pago}>
                 <CustomSelect value={fInline.pago ? 'pago' : 'pendente'} onChange={e => setInlineVal('pago', e.target.value === 'pago')} options={[
                   { value: 'pendente', label: 'Pendente' },
                   { value: 'pago', label: 'Pago' }
-                ]} />
+                ]} style={{ borderColor: errosInline.pago ? '#dc2626' : undefined }} />
               </Field>
               
-              <Field label="Portador" required>
+              <Field label="Portador" required erro={errosInline.portadorId}>
                 <CustomSelect value={fInline.portadorId} onChange={e => setInlineVal('portadorId', e.target.value)} options={[
                   ...portadores.map(p => ({ value: p.id, label: p.nome }))
-                ]} />
+                ]} style={{ borderColor: errosInline.portadorId ? '#dc2626' : undefined }} />
               </Field>
               
-              <Field label="Centro de Custo" required>
+              <Field label="Centro de Custo" required erro={errosInline.centroCustoId}>
                 <CustomSelect value={fInline.centroCustoId} onChange={e => setInlineVal('centroCustoId', e.target.value)} options={[
                   ...ccsFiltradosInline.map(c => ({ value: c.id, label: c.nome }))
-                ]} />
+                ]} style={{ borderColor: errosInline.centroCustoId ? '#dc2626' : undefined }} />
               </Field>
               
-              <Field label="Forma de Pagamento" required>
+              <Field label="Forma de Pagamento" required erro={errosInline.formaPagamento}>
                 <CustomSelect value={fInline.formaPagamento} onChange={e => setInlineVal('formaPagamento', e.target.value)} options={[
                   ...formasPagamento.map(f => ({ value: f, label: f }))
-                ]} />
+                ]} style={{ borderColor: errosInline.formaPagamento ? '#dc2626' : undefined }} />
               </Field>
               
               <div style={{ display: 'flex', minWidth: 100 }}>
-                <Btn variant="primary" type="submit" style={{ width: '100%', height: 38 }}>Salvar</Btn>
+                <Btn variant="primary" type="submit" disabled={salvandoInline} style={{ width: '100%', height: 38 }}>
+                  {salvandoInline ? <LoadingSpinner size={14} color="#fff" /> : 'Salvar'}
+                </Btn>
               </div>
             </div>
           </form>
@@ -304,54 +347,54 @@ function ContasTab({ empresa, lancamentos, portadores, centrosCusto, formasPagam
 
       {/* Filtros */}
       <Card padding={14} style={{ marginBottom: 14 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 1fr 1fr 1fr 1fr auto', gap: 8, alignItems: 'end' }}>
-          <div style={{ position: 'relative' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-end', marginBottom: 12 }}>
+          <div style={{ position: 'relative', flex: isMobile ? '1 1 100%' : '1.5 1 0' }}>
             <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', display: 'flex' }}>
               <Icon name="search" size={14} color="var(--c-text-muted)" />
             </span>
-            <Input value={filtros.busca} onChange={e => setFiltros({ ...filtros, busca: e.target.value })} placeholder="Buscar descrição..." style={{ paddingLeft: 34 }} />
+            <Input value={filtros.busca} onChange={e => setFiltros({ ...filtros, busca: e.target.value })} placeholder="Buscar descrição..." style={{ paddingLeft: 34, width: '100%' }} />
           </div>
-          <Field label="Tipo">
+          <Field label="Tipo" style={{ flex: isMobile ? '1 1 calc(50% - 4px)' : '1 1 0' }}>
             <CustomSelect value={filtros.tipo} onChange={e => setFiltros({ ...filtros, tipo: e.target.value })} options={[
               { value: "todos", label: "Todos" },
               { value: "entrada", label: "Entradas" },
               { value: "saida", label: "Saídas" }
-            ]} />
+            ]} style={{ minWidth: isMobile ? 0 : 140 }} />
           </Field>
-          <Field label="Status">
+          <Field label="Status" style={{ flex: isMobile ? '1 1 calc(50% - 4px)' : '1 1 0' }}>
             <CustomSelect value={filtros.status} onChange={e => setFiltros({ ...filtros, status: e.target.value })} options={[
               { value: "todos", label: "Todos" },
               { value: "pago", label: "Pago" },
               { value: "em-dia", label: "Em dia" },
               { value: "vencendo", label: "Vencendo" },
               { value: "vencido", label: "Vencido" }
-            ]} />
+            ]} style={{ minWidth: isMobile ? 0 : 140 }} />
           </Field>
-          <Field label="Portador">
+          <Field label="Portador" style={{ flex: isMobile ? '1 1 calc(50% - 4px)' : '1 1 0' }}>
             <CustomSelect value={filtros.portador} onChange={e => setFiltros({ ...filtros, portador: e.target.value })} options={[
               { value: "todos", label: "Todos" },
               ...portadores.map(p => ({ value: p.id, label: p.nome }))
-            ]} />
+            ]} style={{ minWidth: isMobile ? 0 : 140 }} />
           </Field>
-          <Field label="Centro de Custo">
+          <Field label="Centro de Custo" style={{ flex: isMobile ? '1 1 calc(50% - 4px)' : '1 1 0' }}>
             <CustomSelect value={filtros.centroCusto} onChange={e => setFiltros({ ...filtros, centroCusto: e.target.value })} options={[
               { value: "todos", label: "Todos" },
               ...centrosCusto.map(c => ({ value: c.id, label: c.nome }))
-            ]} />
+            ]} style={{ minWidth: isMobile ? 0 : 140 }} />
           </Field>
-          <Field label="Forma Pgto.">
+          <Field label="Forma Pgto." style={{ flex: isMobile ? '1 1 calc(50% - 4px)' : '1 1 0' }}>
             <CustomSelect value={filtros.formaPgto} onChange={e => setFiltros({ ...filtros, formaPgto: e.target.value })} options={[
               { value: "todos", label: "Todas" },
               ...formasPagamento.map(f => ({ value: f.nome, label: f.nome }))
-            ]} />
+            ]} style={{ minWidth: isMobile ? 0 : 140 }} />
           </Field>
-          <Field label="Período">
-            <div style={{ display: 'flex', gap: 4 }}>
-              <Input type="date" value={filtros.dataIni} onChange={e => setFiltros({ ...filtros, dataIni: e.target.value })} style={{ padding: '8px 6px', fontSize: 12 }} />
-              <Input type="date" value={filtros.dataFim} onChange={e => setFiltros({ ...filtros, dataFim: e.target.value })} style={{ padding: '8px 6px', fontSize: 12 }} />
-            </div>
+          <Field label="De" style={{ flex: isMobile ? '1 1 calc(50% - 4px)' : '0 0 auto' }}>
+            <DateInput value={filtros.dataIni} onChange={e => setFiltros({ ...filtros, dataIni: e.target.value })} />
           </Field>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <Field label="Até" style={{ flex: isMobile ? '1 1 calc(50% - 4px)' : '0 0 auto' }}>
+            <DateInput value={filtros.dataFim} onChange={e => setFiltros({ ...filtros, dataFim: e.target.value })} />
+          </Field>
+          <div style={{ display: 'flex', gap: 6, flex: isMobile ? '1 1 100%' : '0 0 auto', justifyContent: isMobile ? 'flex-end' : 'flex-start' }}>
             {hasFilter && <Btn variant="ghost" size="sm" onClick={clearFilters}>Limpar</Btn>}
             <Btn variant="secondary" icon="upload" onClick={() => setShowImport(true)}>Importar XLSX</Btn>
           </div>
@@ -360,8 +403,8 @@ function ContasTab({ empresa, lancamentos, portadores, centrosCusto, formasPagam
 
       {/* Tabela */}
       <Card padding={0}>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 10, border: '1px solid var(--c-border)' }}>
+          <table style={{ width: '100%', minWidth: isMobile ? 600 : '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: 'var(--c-bg)', borderBottom: '1px solid var(--c-border)' }}>
                 <th style={th}>Vencimento</th>
@@ -482,6 +525,7 @@ function ContasTab({ empresa, lancamentos, portadores, centrosCusto, formasPagam
       </Card>
 
       {novoLanc && (
+        <LancamentoErrorBoundary onClose={() => setNovoLanc(null)}>
         <LancamentoFormModal
           lanc={novoLanc}
           portadores={portadores}
@@ -494,6 +538,7 @@ function ContasTab({ empresa, lancamentos, portadores, centrosCusto, formasPagam
             setNovoLanc(null);
           }}
         />
+        </LancamentoErrorBoundary>
       )}
       {pgto && (
         <PagamentoModal
@@ -535,50 +580,128 @@ const iconBtn = {
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center'
 };
 
+class LancamentoErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { hasError: false, error: null }; }
+  static getDerivedStateFromError(error) { return { hasError: true, error }; }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <Modal open={true} onClose={this.props.onClose} title="Erro">
+          <div style={{ padding: 20, color: '#dc2626' }}>
+            Ocorreu um erro ao carregar os dados deste lançamento. Por favor, feche e tente novamente.<br/><br/>
+            <small>{String(this.state.error)}</small>
+          </div>
+        </Modal>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // ----- Form de lançamento -----
 function LancamentoFormModal({ lanc, portadores, centrosCusto, formasPagamento, onClose, onSave }) {
+  const isMobile = useIsMobile();
+  const l = lanc || {};
   const [f, setF] = useState_W({
-    id: lanc.id || uid('lanc'),
-    tipo: lanc.tipo || 'saida',
-    descricao: lanc.descricao || '',
-    valor: lanc.valor || '',
-    vencimento: lanc.vencimento || todayISO(),
-    competencia: lanc.competencia || competenciaFromDate(lanc.vencimento || todayISO()),
-    portadorId: lanc.portadorId || portadores[0]?.id,
-    centroCustoId: lanc.centroCustoId || centrosCusto[0]?.id,
-    formaPagamento: lanc.formaPagamento || formasPagamento[0],
-    observacao: lanc.observacao || '',
-    pago: lanc.pago || false,
-    pagamento: lanc.pagamento || null,
+    id: l.id ?? uid('lanc'),
+    tipo: l.tipo ?? 'saida',
+    descricao: l.descricao ?? '',
+    valor: l.valor ?? '',
+    vencimento: l.vencimento ?? todayISO(),
+    competencia: l.competencia ?? competenciaFromDate(l.vencimento ?? todayISO()),
+    portadorId: l.portadorId ?? portadores[0]?.id,
+    centroCustoId: l.centroCustoId ?? centrosCusto[0]?.id,
+    formaPagamento: l.formaPagamento ?? formasPagamento[0] ?? '',
+    observacao: l.observacao ?? '',
+    pago: l.pago ?? false,
+    pagamento: l.pagamento ?? null,
   });
   const set = (k, v) => setF(prev => ({ ...prev, [k]: v }));
   const ccsFiltrados = centrosCusto.filter(c => c.tipo === f.tipo);
   const toast = useToast();
 
-  function submit(e) {
+  const [isParcelado, setIsParcelado] = useState_L(false);
+  const [numParcelas, setNumParcelas] = useState_L(2);
+
+  const [erros, setErros] = useState_L({});
+  const [salvando, setSalvando] = useState_L(false);
+
+  function addMonthsString(isoDateStr, numMonths) {
+    if (!isoDateStr) return '';
+    const d = new Date(isoDateStr + 'T12:00:00Z');
+    d.setUTCMonth(d.getUTCMonth() + numMonths);
+    return d.toISOString().split('T')[0];
+  }
+
+  function validarLancamento(f) {
+    const e = {};
+    if (!f.descricao?.trim()) e.descricao = 'Descrição obrigatória';
+    const val = parseFloat(String(f.valor).replace(',','.'));
+    if (!val || val <= 0) e.valor = 'Valor deve ser maior que zero';
+    if (!f.vencimento) e.vencimento = 'Data de vencimento obrigatória';
+    if (!f.tipo) e.tipo = 'Tipo obrigatório';
+    return e;
+  }
+
+  async function submit(e) {
     e?.preventDefault();
-    const errDesc = Validacao.required(f.descricao, 'Descrição');
-    if (errDesc) return toast.push(errDesc, 'error');
-
-    const errValor = Validacao.valor(f.valor);
-    if (errValor) return toast.push(errValor, 'error');
-
-    const errVenc = Validacao.required(f.vencimento, 'Vencimento');
-    if (errVenc) return toast.push(errVenc, 'error');
-
+    const e_validation = validarLancamento(f);
+    if (Object.keys(e_validation).length > 0) {
+      setErros(e_validation);
+      return;
+    }
+    setErros({});
     const cc = ccsFiltrados.find(c => c.id === f.centroCustoId) || ccsFiltrados[0];
-    onSave({ ...f, valor: +f.valor, centroCustoId: cc.id, competencia: competenciaFromDate(f.vencimento) });
+    const valOriginal = parseFloat(String(f.valor).replace(',','.'));
+    if (isParcelado && !lanc.id && numParcelas > 1) {
+      const baseVal = Math.floor((valOriginal * 100) / numParcelas) / 100;
+      const diff = Math.round((valOriginal - baseVal * numParcelas) * 100) / 100;
+      
+      const parcelas = [];
+      const ref = uid('parc');
+      for (let i = 0; i < numParcelas; i++) {
+        const vDate = i === 0 ? f.vencimento : addMonthsString(f.vencimento, i);
+        parcelas.push({
+          ...f,
+          id: uid('lanc'),
+          valor: i === numParcelas - 1 ? baseVal + diff : baseVal,
+          vencimento: vDate,
+          competencia: competenciaFromDate(vDate),
+          centroCustoId: cc.id,
+          parcelaRef: ref,
+          parcelaNum: i + 1,
+          parcelaTotal: numParcelas,
+          descricao: `${f.descricao} (${i + 1}/${numParcelas})`
+        });
+      }
+      
+      setSalvando(true);
+      try {
+        await onSave(parcelas);
+      } finally {
+        setSalvando(false);
+      }
+    } else {
+      setSalvando(true);
+      try {
+        await onSave({ ...f, valor: valOriginal, centroCustoId: cc.id, competencia: competenciaFromDate(f.vencimento) });
+      } finally {
+        setSalvando(false);
+      }
+    }
   }
 
   return (
     <Modal open onClose={onClose} title={lanc.id ? 'Editar Lançamento' : 'Novo Lançamento'} width={680}
       footer={<>
-        <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
-        <Btn variant="primary" onClick={submit}>{lanc.id ? 'Salvar' : 'Criar Lançamento'}</Btn>
+        <Btn variant="secondary" onClick={onClose} disabled={salvando}>Cancelar</Btn>
+        <Btn variant="primary" onClick={submit} disabled={salvando} style={{ minWidth: 120 }}>
+          {salvando ? <><LoadingSpinner size={14} color="#fff" /> Salvando...</> : (lanc.id ? 'Salvar' : 'Criar Lançamento')}
+        </Btn>
       </>}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-        <Field label="Tipo" required span={2}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+      <form onSubmit={submit} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
+        <Field label="Tipo" required span={2} erro={erros.tipo}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 8 }}>
             {[
               { v: 'entrada', label: 'Entrada (a receber)', cor: '#16a34a', icon: 'arrowDown' },
               { v: 'saida', label: 'Saída (a pagar)', cor: '#dc2626', icon: 'arrowUp' }
@@ -595,15 +718,35 @@ function LancamentoFormModal({ lanc, portadores, centrosCusto, formasPagamento, 
               </button>
             ))}
           </div>
+          {erros.tipo && <span style={{ fontSize:11, color:'#dc2626', marginTop:2 }}>{erros.tipo}</span>}
         </Field>
-        <Field label="Descrição" required span={2}>
-          <Input value={f.descricao} onChange={e => set('descricao', e.target.value)} placeholder="Ex: Conta de luz - Outubro" autoFocus />
+        <Field label="Descrição" required span={2} erro={erros.descricao}>
+          <Input value={f.descricao} onChange={e => set('descricao', e.target.value)} placeholder="Ex: Conta de luz - Outubro" autoFocus style={{ borderColor: erros.descricao ? '#dc2626' : undefined }} />
+          {erros.descricao && <span style={{ fontSize:11, color:'#dc2626', marginTop:2 }}>{erros.descricao}</span>}
         </Field>
-        <Field label="Valor (R$)" required>
-          <Input type="number" min="0" step="0.01" value={f.valor} onChange={e => set('valor', e.target.value)} placeholder="0,00" />
+        <Field label="Valor (R$)" required erro={erros.valor}>
+          <Input type="number" min="0" step="0.01" value={f.valor} onChange={e => set('valor', e.target.value)} placeholder="0,00" style={{ borderColor: erros.valor ? '#dc2626' : undefined }} />
+          {erros.valor && <span style={{ fontSize:11, color:'#dc2626', marginTop:2 }}>{erros.valor}</span>}
+          {!lanc.id && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 13, cursor: 'pointer' }}>
+              <input type="checkbox" checked={isParcelado} onChange={e => setIsParcelado(e.target.checked)} />
+              Parcelar lançamento
+            </label>
+          )}
         </Field>
-        <Field label="Vencimento" required>
-          <Input type="date" value={f.vencimento} onChange={e => { set('vencimento', e.target.value); set('competencia', competenciaFromDate(e.target.value)); }} />
+        {isParcelado && !lanc.id && (
+          <Field label="Número de Parcelas" span={isMobile ? 1 : 2}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <Input type="number" min="2" max="120" value={numParcelas} onChange={e => setNumParcelas(parseInt(e.target.value) || 2)} style={{ width: 100 }} />
+              <span style={{ fontSize: 13, color: 'var(--c-text-muted)' }}>
+                {numParcelas} parcelas de aprox. {formatBRL((parseFloat(String(f.valor).replace(',','.')) || 0) / numParcelas)} / mês
+              </span>
+            </div>
+          </Field>
+        )}
+        <Field label="Vencimento" required erro={erros.vencimento}>
+          <DateInput value={f.vencimento} onChange={e => { set('vencimento', e.target.value); set('competencia', competenciaFromDate(e.target.value)); }} style={{ border: erros.vencimento ? '1px solid #dc2626' : undefined }} />
+          {erros.vencimento && <span style={{ fontSize:11, color:'#dc2626', marginTop:2 }}>{erros.vencimento}</span>}
         </Field>
         <Field label="Centro de Custo" required>
           <CustomSelect value={f.centroCustoId} onChange={e => set('centroCustoId', e.target.value)} options={[
@@ -626,13 +769,14 @@ function LancamentoFormModal({ lanc, portadores, centrosCusto, formasPagamento, 
         <Field label="Observação" span={2}>
           <Textarea value={f.observacao} onChange={e => set('observacao', e.target.value)} placeholder="Anotações internas (opcional)" />
         </Field>
-      </div>
+      </form>
     </Modal>
   );
 }
 
 // ----- Pagamento -----
 function PagamentoModal({ lanc, portadores, centrosCusto, onClose, onConfirm }) {
+  const isMobile = useIsMobile();
   const [data, setData] = useState_W(todayISO());
   const [portadorId, setPortadorId] = useState_W(lanc.portadorId);
   const portMap = Object.fromEntries(portadores.map(p => [p.id, p]));
@@ -665,9 +809,9 @@ function PagamentoModal({ lanc, portadores, centrosCusto, onClose, onConfirm }) 
         </div>
         <div style={{ fontSize: 22, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: isEntrada ? '#16a34a' : '#dc2626' }}>{formatBRL(lanc.valor)}</div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
         <Field label={isEntrada ? 'Data do recebimento' : 'Data do pagamento'} required>
-          <Input type="date" value={data} onChange={e => setData(e.target.value)} />
+          <DateInput value={data} onChange={e => setData(e.target.value)} />
         </Field>
         <Field label={isEntrada ? 'Caiu em' : 'Sai de'} required hint="Banco / caixa / cofre">
           <CustomSelect value={portadorId} onChange={e => setPortadorId(e.target.value)} options={[
@@ -745,6 +889,7 @@ function Row({ k, v, mono }) {
 
 // ----- Tab 2: Portadores -----
 function PortadoresTab({ empresa, lancamentos, portadores }) {
+  const isMobile = useIsMobile();
   const saldos = portadorSaldos(lancamentos, portadores);
   const totalEnt = saldos.reduce((s, p) => s + p.entradas, 0);
   const totalSai = saldos.reduce((s, p) => s + p.saidas, 0);
@@ -791,7 +936,8 @@ function PortadoresTab({ empresa, lancamentos, portadores }) {
             <div style={{ fontSize: 18, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{formatBRL(sel?.saldo)}</div>
           </div>
         </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 10, border: '1px solid var(--c-border)' }}>
+        <table style={{ width: '100%', minWidth: isMobile ? 600 : '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ background: 'var(--c-bg)', borderBottom: '1px solid var(--c-border)' }}>
               <th style={th}>Data Pgto.</th>
@@ -815,6 +961,7 @@ function PortadoresTab({ empresa, lancamentos, portadores }) {
             ))}
           </tbody>
         </table>
+        </div>
         {lancsPort.length === 0 && <EmptyState icon="receipt" title="Sem movimentações" hint="Este portador ainda não recebeu nenhum lançamento quitado." />}
       </Card>
     </div>
@@ -823,6 +970,7 @@ function PortadoresTab({ empresa, lancamentos, portadores }) {
 
 // ----- Tab 3: Centros de Custo -----
 function CentrosTab({ empresa, lancamentos, centrosCusto }) {
+  const isMobile = useIsMobile();
   const stats = centroCustoStats(lancamentos, centrosCusto);
   const entradas = stats.filter(c => c.tipo === 'entrada');
   const saidas = stats.filter(c => c.tipo === 'saida');
@@ -865,11 +1013,11 @@ function CentrosTab({ empresa, lancamentos, centrosCusto }) {
 
   return (
     <div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 18 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12, marginBottom: 18 }}>
         <KPI label="Total de Entradas" value={formatBRL(totalEnt)} icon="arrowDown" color="#16a34a" sub={`${entradas.reduce((s, c) => s + c.qtd, 0)} lançamentos em ${entradas.length} centros`} />
         <KPI label="Total de Saídas" value={formatBRL(totalSai)} icon="arrowUp" color="#dc2626" sub={`${saidas.reduce((s, c) => s + c.qtd, 0)} lançamentos em ${saidas.length} centros`} />
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
         {bar({ stats: entradas, totalGeral: totalEnt, cor: '#16a34a', titulo: 'Entradas por Centro' })}
         {bar({ stats: saidas, totalGeral: totalSai, cor: '#dc2626', titulo: 'Saídas por Centro' })}
       </div>
@@ -879,6 +1027,8 @@ function CentrosTab({ empresa, lancamentos, centrosCusto }) {
 
 // ----- Tab 4: Relatório -----
 function RelatorioTab({ empresa, lancamentos, portadores, centrosCusto, formasPagamento }) {
+  const isMobile = useIsMobile();
+  const hoje = todayISO();
   const toast = useToast();
 
   // Distribuição forma de pagamento
@@ -916,7 +1066,7 @@ function RelatorioTab({ empresa, lancamentos, portadores, centrosCusto, formasPa
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12, marginBottom: 12 }}>
         <Card>
           <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Distribuição por Forma de Pagamento</div>
           <div style={{ fontSize: 12, color: 'var(--c-text-muted)', marginBottom: 18 }}>Volume total movimentado por meio</div>
@@ -979,7 +1129,8 @@ function RelatorioTab({ empresa, lancamentos, portadores, centrosCusto, formasPa
             <div style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>Resultado consolidado por competência</div>
           </div>
         </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 10, border: '1px solid var(--c-border)' }}>
+        <table style={{ width: '100%', minWidth: isMobile ? 600 : '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ borderBottom: '1px solid var(--c-border)' }}>
               <th style={th}>Competência</th>
@@ -1010,6 +1161,7 @@ function RelatorioTab({ empresa, lancamentos, portadores, centrosCusto, formasPa
             </tr>
           </tfoot>
         </table>
+        </div>
       </Card>
     </div>
   );

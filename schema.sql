@@ -318,3 +318,49 @@ $$ language plpgsql security definer set search_path = public;
 create or replace trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+
+-- =========================================================================
+-- MIGRATION: Novas melhorias (Convites, PF/PJ, Parcelamento)
+-- =========================================================================
+
+-- Convites (garantindo que a tabela existe com a estrutura reportada e adicionando as novas colunas)
+create table if not exists public.convites (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references auth.users(id) on delete cascade not null,
+  email_convidado text not null,
+  papel text not null,
+  status text default 'pendente' not null,
+  token text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  expires_at timestamp with time zone
+);
+
+ALTER TABLE public.convites
+  ADD COLUMN IF NOT EXISTS nome TEXT,
+  ADD COLUMN IF NOT EXISTS senha_temporaria TEXT,
+  ADD COLUMN IF NOT EXISTS empresas_ids UUID[] DEFAULT '{}';
+
+-- Suporte a Pessoa Física (PF)
+ALTER TABLE public.empresas
+  ADD COLUMN IF NOT EXISTS tipo_pessoa TEXT DEFAULT 'pj' CHECK (tipo_pessoa IN ('pj', 'pf')),
+  ADD COLUMN IF NOT EXISTS documento TEXT;
+
+-- Parcelamentos
+ALTER TABLE public.lancamentos
+  ADD COLUMN IF NOT EXISTS parcela_ref TEXT,
+  ADD COLUMN IF NOT EXISTS parcela_num INTEGER,
+  ADD COLUMN IF NOT EXISTS parcela_total INTEGER;
+
+-- Politica basica para convites
+alter table public.convites enable row level security;
+create policy "convites_all" on public.convites for all using (user_id = auth.uid());
+
+-- Preferências de Notificação adicionais
+ALTER TABLE public.preferencias_notificacao
+  ADD COLUMN IF NOT EXISTS email_vencimento boolean default true not null,
+  ADD COLUMN IF NOT EXISTS email_vencimento_dias integer default 3 not null,
+  ADD COLUMN IF NOT EXISTS email_resumo_semanal boolean default true not null,
+  ADD COLUMN IF NOT EXISTS email_resumo_dia_semana integer default 1 not null,
+  ADD COLUMN IF NOT EXISTS email_relatorio_mensal boolean default true not null;
+

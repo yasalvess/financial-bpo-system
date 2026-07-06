@@ -2,8 +2,9 @@
 const { useState: useState_C, useMemo: useMemo_C } = React;
 
 function CentralGestao({ data, onOpenEmpresa, onCreateEmpresa, onDeleteEmpresa, onEditEmpresa }) {
+  const isMobile = useIsMobile();
   const [busca, setBusca] = useState_C('');
-  const [filtroStatus, setFiltroStatus] = useState_C('todos');
+  const [empresaExcluir, setEmpresaExcluir] = useState_C(null);
   const [view, setView] = useState_C('cards'); // cards | tabela
   const [dashFiltros, setDashFiltros] = useState_C({
     periodo: '6m',      // '1m' | '3m' | '6m' | '12m' | 'custom'
@@ -37,10 +38,9 @@ function CentralGestao({ data, onOpenEmpresa, onCreateEmpresa, onDeleteEmpresa, 
     setDashFiltros({ periodo: '6m', segmento: 'todos', status: 'todos', dataIni: '', dataFim: '' });
   }
 
-  // Lista de empresas (grade) — usa a toolbar própria (busca + filtroStatus)
-  const filtradas = empresasComStats
-    .filter(e => !busca || e.nome.toLowerCase().includes(busca.toLowerCase()) || e.cnpj.includes(busca))
-    .filter(e => filtroStatus === 'todos' || e.stats.statusEmpresa === filtroStatus);
+  // Lista de empresas (grade) — usa a toolbar própria (busca) + filtros do dashboard
+  const filtradas = dashEmpresas
+    .filter(e => !busca || e.nome.toLowerCase().includes(busca.toLowerCase()) || e.cnpj.includes(busca) || (e.documento && e.documento.replace(/\D/g, '').includes(busca.replace(/\D/g, ''))));
 
   // KPIs globais (reagem aos filtros do dashboard)
   const kpiTotalEmp = dashEmpresas.length;
@@ -117,7 +117,7 @@ function CentralGestao({ data, onOpenEmpresa, onCreateEmpresa, onDeleteEmpresa, 
       </div>
 
       {/* KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: 12, marginBottom: 12 }}>
         <KPI label="Empresas Cadastradas" value={kpiTotalEmp} icon="building" color="var(--c-primary)" sub={`${kpiEmDia} em dia, ${kpiVencendo + kpiVencidas} com pendências`} />
         <KPI label="A Receber" value={formatBRL(totalReceber)} icon="arrowDown" color="#16a34a" sub={`${empresasComStats.reduce((s, e) => s + (data.lancamentos[e.id] || []).filter(l => l.tipo === 'entrada' && !l.pago).length, 0)} lançamentos`} />
         <KPI label="A Pagar" value={formatBRL(totalPagar)} icon="arrowUp" color="#dc2626" sub={`${empresasComStats.reduce((s, e) => s + (data.lancamentos[e.id] || []).filter(l => l.tipo === 'saida' && !l.pago).length, 0)} lançamentos`} />
@@ -126,10 +126,10 @@ function CentralGestao({ data, onOpenEmpresa, onCreateEmpresa, onDeleteEmpresa, 
 
       {/* Barra de filtros do dashboard */}
       <Card padding={12} style={{ marginBottom: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
           <Icon name="filter" size={15} color="var(--c-text-muted)" />
-          <Field label="Período">
-            <CustomSelect value={dashFiltros.periodo} onChange={e => setDashFiltros({ ...dashFiltros, periodo: e.target.value })} style={{ width: 150 }} options={[
+          <Field label="Período" style={{ flex: isMobile ? '1 1 calc(50% - 4px)' : '0 0 auto' }}>
+            <CustomSelect value={dashFiltros.periodo} onChange={e => setDashFiltros({ ...dashFiltros, periodo: e.target.value })} style={{ minWidth: isMobile ? 0 : 140 }} options={[
               { value: "1m", label: "1 mês" },
               { value: "3m", label: "3 meses" },
               { value: "6m", label: "6 meses" },
@@ -139,18 +139,18 @@ function CentralGestao({ data, onOpenEmpresa, onCreateEmpresa, onDeleteEmpresa, 
           </Field>
           {dashFiltros.periodo === 'custom' && (
             <>
-              <Field label="De"><Input type="date" value={dashFiltros.dataIni} onChange={e => setDashFiltros({ ...dashFiltros, dataIni: e.target.value })} /></Field>
-              <Field label="Até"><Input type="date" value={dashFiltros.dataFim} onChange={e => setDashFiltros({ ...dashFiltros, dataFim: e.target.value })} /></Field>
+              <Field label="De" style={{ flex: isMobile ? '1 1 calc(50% - 4px)' : '0 0 auto' }}><DateInput value={dashFiltros.dataIni} onChange={e => setDashFiltros({ ...dashFiltros, dataIni: e.target.value })} /></Field>
+              <Field label="Até" style={{ flex: isMobile ? '1 1 calc(50% - 4px)' : '0 0 auto' }}><DateInput value={dashFiltros.dataFim} onChange={e => setDashFiltros({ ...dashFiltros, dataFim: e.target.value })} /></Field>
             </>
           )}
-          <Field label="Segmento">
-            <CustomSelect value={dashFiltros.segmento} onChange={e => setDashFiltros({ ...dashFiltros, segmento: e.target.value })} style={{ width: 180 }} options={[
+          <Field label="Segmento" style={{ flex: isMobile ? '1 1 calc(50% - 4px)' : '0 0 auto' }}>
+            <CustomSelect value={dashFiltros.segmento} onChange={e => setDashFiltros({ ...dashFiltros, segmento: e.target.value })} style={{ minWidth: isMobile ? 0 : 140 }} options={[
               { value: "todos", label: "Todos" },
               ...segmentos.map(s => ({ value: s, label: s }))
             ]} />
           </Field>
-          <Field label="Status">
-            <CustomSelect value={dashFiltros.status} onChange={e => setDashFiltros({ ...dashFiltros, status: e.target.value })} style={{ width: 150 }} options={[
+          <Field label="Status" style={{ flex: isMobile ? '1 1 calc(50% - 4px)' : '0 0 auto' }}>
+            <CustomSelect value={dashFiltros.status} onChange={e => setDashFiltros({ ...dashFiltros, status: e.target.value })} style={{ minWidth: isMobile ? 0 : 140 }} options={[
               { value: "todos", label: "Todos" },
               { value: "em-dia", label: "Em dia" },
               { value: "vencendo", label: "Vencendo" },
@@ -162,7 +162,7 @@ function CentralGestao({ data, onOpenEmpresa, onCreateEmpresa, onDeleteEmpresa, 
       </Card>
 
       {/* Charts row */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, marginBottom: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr', gap: 12, marginBottom: 24 }}>
         <Card>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
             <div>
@@ -199,7 +199,7 @@ function CentralGestao({ data, onOpenEmpresa, onCreateEmpresa, onDeleteEmpresa, 
             <strong style={{ color: 'var(--c-red-fg)' }}>{kpiVencidas} empresa{kpiVencidas !== 1 && 's'} com {formatBRL(totalVencido)}</strong>
             <span style={{ color: 'var(--c-red-fg)' }}> em pagamentos vencidos. Resolva o quanto antes.</span>
           </div>
-          <Btn variant="danger" size="sm" onClick={() => setFiltroStatus('vencido')}>Ver vencidas</Btn>
+          <Btn variant="danger" size="sm" onClick={() => setDashFiltros(f => ({ ...f, status: 'vencido' }))}>Ver vencidas</Btn>
         </div>
       )}
 
@@ -211,12 +211,6 @@ function CentralGestao({ data, onOpenEmpresa, onCreateEmpresa, onDeleteEmpresa, 
           <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por nome ou CNPJ..."
             style={{ border: 'none', outline: 'none', fontSize: 13, padding: '8px 4px', width: 240, fontFamily: 'inherit', background: 'transparent' }} />
         </div>
-        <CustomSelect value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)} style={{ width: 160 }} options={[
-          { value: "todos", label: "Todos status" },
-          { value: "em-dia", label: "Em dia" },
-          { value: "vencendo", label: "Vencendo" },
-          { value: "vencido", label: "Vencido" }
-        ]} />
         <div style={{ display: 'flex', background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 8, padding: 3 }}>
           <button onClick={() => setView('cards')} style={{
             padding: '6px 10px', border: 'none', borderRadius: 6, cursor: 'pointer',
@@ -232,15 +226,16 @@ function CentralGestao({ data, onOpenEmpresa, onCreateEmpresa, onDeleteEmpresa, 
       {/* Grade de empresas */}
       {view === 'cards' ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
-          {filtradas.map(e => <EmpresaCard key={e.id} empresa={e} onOpen={() => onOpenEmpresa(e.id)} onEdit={() => onEditEmpresa(e)} />)}
+          {filtradas.map(e => <EmpresaCard key={e.id} empresa={e} onOpen={() => onOpenEmpresa(e.id)} onEdit={() => onEditEmpresa(e)} onDelete={() => setEmpresaExcluir(e)} />)}
         </div>
       ) : (
         <Card padding={0}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 10, border: '1px solid var(--c-border)' }}>
+            <table style={{ minWidth: isMobile ? 600 : '100%', width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: 'var(--c-bg)', borderBottom: '1px solid var(--c-border)' }}>
                 <th style={th}>Empresa</th>
-                <th style={th}>CNPJ</th>
+                <th style={th}>Documento</th>
                 <th style={th}>Segmento</th>
                 <th style={th}>Status</th>
                 <th style={{ ...th, textAlign: 'right' }}>A Receber</th>
@@ -253,8 +248,13 @@ function CentralGestao({ data, onOpenEmpresa, onCreateEmpresa, onDeleteEmpresa, 
             <tbody>
               {filtradas.map(e => (
                 <tr key={e.id} style={{ borderBottom: '1px solid var(--c-border)', cursor: 'pointer' }} onClick={() => onOpenEmpresa(e.id)}>
-                  <td style={td}><div style={{ fontWeight: 600 }}>{e.nome}</div></td>
-                  <td style={{ ...td, color: 'var(--c-text-muted)' }}>{e.cnpj}</td>
+                  <td style={td}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }}>
+                      {e.nome}
+                      <span style={{ fontSize: 10, padding: '2px 6px', background: 'var(--c-border)', borderRadius: 4, color: 'var(--c-text-muted)' }}>{e.tipoPessoa === 'pf' ? 'PF' : 'PJ'}</span>
+                    </div>
+                  </td>
+                  <td style={{ ...td, color: 'var(--c-text-muted)' }}>{e.documento || e.cnpj}</td>
                   <td style={{ ...td, color: 'var(--c-text-muted)' }}>{e.segmento}</td>
                   <td style={td}><Badge status={e.stats.statusEmpresa} /></td>
                   <td style={{ ...td, textAlign: 'right', color: '#16a34a', fontVariantNumeric: 'tabular-nums' }}>{formatBRL(e.stats.aReceber)}</td>
@@ -266,6 +266,7 @@ function CentralGestao({ data, onOpenEmpresa, onCreateEmpresa, onDeleteEmpresa, 
               ))}
             </tbody>
           </table>
+          </div>
         </Card>
       )}
 
@@ -276,6 +277,19 @@ function CentralGestao({ data, onOpenEmpresa, onCreateEmpresa, onDeleteEmpresa, 
           } />
         </Card>
       )}
+
+      <ModalConfirmacao
+        open={!!empresaExcluir}
+        titulo="Confirmar Exclusão"
+        mensagem={`Deseja realmente excluir a empresa "${empresaExcluir?.nome || ''}"? Esta ação removerá permanentemente todos os lançamentos vinculados a ela.`}
+        onConfirmar={async () => {
+          if (empresaExcluir) {
+            await onDeleteEmpresa(empresaExcluir.id);
+            setEmpresaExcluir(null);
+          }
+        }}
+        onCancelar={() => setEmpresaExcluir(null)}
+      />
     </div>
   );
 }
@@ -283,10 +297,12 @@ function CentralGestao({ data, onOpenEmpresa, onCreateEmpresa, onDeleteEmpresa, 
 const th = { padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--c-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' };
 const td = { padding: '12px 16px' };
 
-function EmpresaCard({ empresa, onOpen, onEdit }) {
+function EmpresaCard({ empresa, onOpen, onEdit, onDelete }) {
   const s = empresa.stats;
   const c = statusColor(s.statusEmpresa);
   const initial = empresa.nome.charAt(0).toUpperCase();
+  const [menuOpen, setMenuOpen] = React.useState(false);
+
   return (
     <div onClick={onOpen} style={{
       background: 'var(--c-surface)', borderRadius: 12, padding: 18,
@@ -295,7 +311,7 @@ function EmpresaCard({ empresa, onOpen, onEdit }) {
       transition: 'all 0.15s'
     }}
       onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--c-primary)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
-      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--c-border)'; e.currentTarget.style.transform = 'none'; }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--c-border)'; e.currentTarget.style.transform = 'none'; setMenuOpen(false); }}
     >
       {/* status bar */}
       <div style={{ position: 'absolute', top: 0, left: 16, right: 16, height: 3, background: c.dot, borderRadius: '0 0 4px 4px' }} />
@@ -307,12 +323,49 @@ function EmpresaCard({ empresa, onOpen, onEdit }) {
           fontWeight: 700, fontSize: 16, flexShrink: 0
         }}>{initial}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{empresa.nome}</div>
-          <div style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>{empresa.cnpj}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{empresa.nome}</span>
+            <span style={{ fontSize: 10, padding: '1px 5px', background: 'var(--c-border)', borderRadius: 4, color: 'var(--c-text-muted)', flexShrink: 0 }}>
+              {empresa.tipoPessoa === 'pf' ? 'PF' : 'PJ'}
+            </span>
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>{empresa.documento || empresa.cnpj}</div>
         </div>
-        <button onClick={(e) => { e.stopPropagation(); onEdit(); }} style={{
-          background: 'none', border: 'none', padding: 4, cursor: 'pointer', color: 'var(--c-text-muted)', borderRadius: 6
-        }}><Icon name="more" size={16} /></button>
+        <div style={{ position: 'relative' }}>
+          <button onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }} style={{
+            background: 'none', border: 'none', padding: 4, cursor: 'pointer', color: 'var(--c-text-muted)', borderRadius: 6
+          }}><Icon name="more" size={16} /></button>
+
+          {menuOpen && (
+            <div style={{
+              position: 'absolute', right: 0, top: 26, background: 'var(--c-surface)',
+              border: '1px solid var(--c-border)', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,.08)',
+              zIndex: 10, width: 120, display: 'flex', flexDirection: 'column', padding: 4
+            }}>
+              <button onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onOpen(); }} style={{
+                background: 'none', border: 'none', padding: '8px 12px', fontSize: 13, cursor: 'pointer',
+                textAlign: 'left', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--c-text)',
+                fontFamily: 'inherit'
+              }}>
+                <Icon name="eye" size={14} /> Ver
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onEdit(); }} style={{
+                background: 'none', border: 'none', padding: '8px 12px', fontSize: 13, cursor: 'pointer',
+                textAlign: 'left', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--c-text)',
+                fontFamily: 'inherit'
+              }}>
+                <Icon name="edit" size={14} /> Editar
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onDelete(); }} style={{
+                background: 'none', border: 'none', padding: '8px 12px', fontSize: 13, cursor: 'pointer',
+                textAlign: 'left', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, color: '#dc2626',
+                fontFamily: 'inherit'
+              }}>
+                <Icon name="trash" size={14} /> Excluir
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>

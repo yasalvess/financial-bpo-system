@@ -103,6 +103,9 @@ function statusColor(status) {
     'em-dia': { bg: 'var(--c-blue-bg)', fg: 'var(--c-blue-fg)', dot: '#3b82f6', label: 'Em dia' },
     'vencendo': { bg: 'var(--c-amber-bg)', fg: 'var(--c-amber-fg)', dot: '#f59e0b', label: 'Vencendo' },
     'vencido': { bg: 'var(--c-red-bg)', fg: 'var(--c-red-fg)', dot: '#ef4444', label: 'Vencido' },
+    'hoje': { label: 'Vence hoje', color: 'var(--c-amber-fg)', bg: 'var(--c-amber-bg)', dot: '#d97706' },
+    'pendente': { label: 'Pendente', color: 'var(--c-amber-fg)', bg: 'var(--c-amber-bg)', dot: '#d97706' },
+    'critico': { label: 'Crítico', color: '#fff', bg: '#dc2626', dot: '#fff' }
   }[status];
 }
 

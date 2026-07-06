@@ -30,7 +30,14 @@ function Icon({ name, size = 18, color = 'currentColor', strokeWidth = 2 }) {
     wallet: <><rect x="3" y="6" width="18" height="14" rx="2" /><path d="M3 10h18M16 15h2" /></>,
     lock: <><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></>,
     target: <><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1.5" fill={color} /></>,
-    calendar: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 9h18M8 3v4M16 3v4" /></>,
+    calendar: (
+      <>
+        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+        <line x1="16" y1="2" x2="16" y2="6" />
+        <line x1="8" y1="2" x2="8" y2="6" />
+        <line x1="3" y1="10" x2="21" y2="10" />
+      </>
+    ),
     list: <><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></>,
     receipt: <><path d="M5 3h14v18l-3-2-3 2-3-2-3 2-2-1V3z" /><path d="M9 8h6M9 12h6M9 16h3" /></>,
     eye: <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z" /><circle cx="12" cy="12" r="3" /></>,
@@ -65,7 +72,7 @@ function Btn({ variant = 'primary', size = 'md', icon, children, onClick, disabl
       style={{
         ...variants[variant],
         padding: pad, fontSize: fs, fontWeight: 500,
-        borderRadius: 8, display: 'inline-flex', alignItems: 'center', gap: 6,
+        borderRadius: 8, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
         cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1,
         transition: 'all 0.15s', whiteSpace: 'nowrap',
         fontFamily: 'inherit', lineHeight: 1.2,
@@ -83,7 +90,7 @@ function Badge({ status, children, dot = true }) {
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 6,
-      padding: '3px 10px', borderRadius: 99, background: c.bg, color: c.fg,
+      padding: '3px 10px', borderRadius: 99, background: c.bg, color: c.fg || c.color,
       fontSize: 12, fontWeight: 600
     }}>
       {dot && <span style={{ width: 7, height: 7, borderRadius: 99, background: c.dot }} />}
@@ -135,7 +142,8 @@ function KPI({ label, value, delta, deltaLabel, icon, color = 'var(--c-text)', s
 }
 
 // ----- Modal -----
-function Modal({ open, onClose, title, children, width = 560, footer }) {
+function Modal({ open, onClose, title, children, width = 560, footer, disableBackdropClick = false }) {
+  const isMobile = useIsMobile();
   useEffect(() => {
     function esc(e) { if (e.key === 'Escape' && open) onClose(); }
     document.addEventListener('keydown', esc);
@@ -143,13 +151,17 @@ function Modal({ open, onClose, title, children, width = 560, footer }) {
   }, [open, onClose]);
   if (!open) return null;
   return (
-    <div onClick={onClose} style={{
+    <div onClick={disableBackdropClick ? undefined : onClose} style={{
       position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.45)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20,
+      display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', justifyContent: 'center', zIndex: 100, 
+      paddingTop: isMobile ? 20 : 20, paddingLeft: 10, paddingRight: 10, paddingBottom: 20,
       backdropFilter: 'blur(2px)',
     }}>
       <div onClick={e => e.stopPropagation()} style={{
-        background: 'var(--c-surface)', borderRadius: 12, width: '100%', maxWidth: width, maxHeight: '90vh',
+        background: 'var(--c-surface)', borderRadius: 12, 
+        width: isMobile ? '95vw' : width || 520, 
+        maxWidth: '95vw', maxHeight: '90vh',
+        margin: isMobile ? '20px auto' : 'auto',
         display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,.2)'
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '18px 22px', borderBottom: '1px solid var(--c-border)' }}>
@@ -179,15 +191,64 @@ function Field({ label, children, hint, required, span = 1 }) {
 }
 
 const inputStyle = {
-  padding: '8px 12px', fontSize: 14,
-  border: '1px solid var(--c-border)', borderRadius: 8, background: 'var(--c-surface)',
-  fontFamily: 'inherit', outline: 'none', color: 'var(--c-text)', width: '100%',
-  boxSizing: 'border-box',
+  width: '100%', padding: '8px 12px', border: '1.5px solid var(--c-border)', borderRadius: 8, fontSize: 13,
+  background: 'var(--c-surface)', color: 'var(--c-text)', fontFamily: 'inherit',
+  outline: 'none', transition: 'border-color 0.15s, box-shadow 0.15s'
 };
 
 function Input(props) {
-  return <input {...props} style={{ ...inputStyle, ...(props.style || {}) }} />;
+  const { style, ...rest } = props;
+  return (
+    <input style={{ ...inputStyle, ...style }}
+      onFocus={e => { e.target.style.borderColor = 'var(--c-primary)'; e.target.style.boxShadow = '0 0 0 3px var(--c-primary-soft)'; }}
+      onBlur={e => { e.target.style.borderColor = 'var(--c-border)'; e.target.style.boxShadow = 'none'; }}
+      {...rest}
+    />
+  );
 }
+
+function DateInput({ value, onChange, placeholder, style = {} }) {
+  return (
+    <div style={{ position:'relative', ...style }}>
+      <input
+        type="date"
+        value={value || ''}
+        onChange={onChange}
+        style={{
+          width: '100%',
+          padding: '8px 36px 8px 12px',
+          border: '1.5px solid var(--c-border)',
+          borderRadius: 8,
+          fontSize: 13,
+          color: value ? 'var(--c-text)' : 'var(--c-text-muted)',
+          background: 'var(--c-surface)',
+          fontFamily: 'inherit',
+          cursor: 'pointer',
+          outline: 'none',
+          appearance: 'none',
+          WebkitAppearance: 'none',
+          transition: 'border-color 0.15s, box-shadow 0.15s'
+        }}
+        onFocus={e => {
+          e.target.style.borderColor = 'var(--c-primary)'
+          e.target.style.boxShadow = '0 0 0 3px var(--c-primary-soft)'
+        }}
+        onBlur={e => {
+          e.target.style.borderColor = 'var(--c-border)'
+          e.target.style.boxShadow = 'none'
+        }}
+      />
+      <span style={{
+        position:'absolute', right:10, top:'50%',
+        transform:'translateY(-50%)',
+        pointerEvents:'none', color:'var(--c-text-muted)'
+      }}>
+        <Icon name="calendar" size={15} />
+      </span>
+    </div>
+  )
+}
+
 function CustomSelect({ value, onChange, options, placeholder = 'Selecionar', style = {}, disabled = false, size = 'md' }) {
   const { useState, useEffect, useRef } = React;
   const opts = options.map(o => typeof o === 'string' ? { value: o, label: o } : o);
@@ -310,7 +371,14 @@ function CustomSelect({ value, onChange, options, placeholder = 'Selecionar', st
   );
 }
 function Textarea(props) {
-  return <textarea {...props} style={{ ...inputStyle, minHeight: 80, resize: 'vertical', fontFamily: 'inherit', ...(props.style || {}) }} />;
+  const { style, ...rest } = props;
+  return (
+    <textarea style={{ ...inputStyle, minHeight: 80, resize: 'vertical', ...style }}
+      onFocus={e => { e.target.style.borderColor = 'var(--c-primary)'; e.target.style.boxShadow = '0 0 0 3px var(--c-primary-soft)'; }}
+      onBlur={e => { e.target.style.borderColor = 'var(--c-border)'; e.target.style.boxShadow = 'none'; }}
+      {...rest}
+    />
+  );
 }
 
 // ----- Simple chart components (SVG) -----
@@ -503,6 +571,22 @@ const Validacao = {
     if (parseInt(nums[13]) !== d2) return 'CNPJ inválido';
     return null;
   },
+  cpf(v) {
+    const nums = v.replace(/\D/g, '');
+    if (nums.length !== 11) return 'CPF deve ter 11 dígitos';
+    if (/^(\d)\1+$/.test(nums)) return 'CPF inválido';
+    let sum = 0, rest;
+    for (let i = 1; i <= 9; i++) sum += parseInt(nums.substring(i-1, i)) * (11 - i);
+    rest = (sum * 10) % 11;
+    if ((rest === 10) || (rest === 11)) rest = 0;
+    if (rest !== parseInt(nums.substring(9, 10))) return 'CPF inválido';
+    sum = 0;
+    for (let i = 1; i <= 10; i++) sum += parseInt(nums.substring(i-1, i)) * (12 - i);
+    rest = (sum * 10) % 11;
+    if ((rest === 10) || (rest === 11)) rest = 0;
+    if (rest !== parseInt(nums.substring(10, 11))) return 'CPF inválido';
+    return null;
+  },
   email(v) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? null : 'E-mail inválido';
   },
@@ -528,6 +612,13 @@ const Validacao = {
     return nums.length === 8 ? null : 'CEP deve ter 8 dígitos';
   }
 };
+
+function maskCPF(v) {
+  return v.replace(/\D/g, '').slice(0,11)
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+}
 
 function maskCNPJ(v) {
   return v.replace(/\D/g, '').slice(0,14)
@@ -621,4 +712,4 @@ function imprimirPDF(htmlStr, title = 'Documento') {
   win.document.close();
 }
 
-Object.assign(window, { Icon, Btn, Badge, Card, KPI, Modal, Field, Input, CustomSelect, Textarea, BarChart, DonutChart, LineChart, Legend, EmptyState, ToastProvider, useToast, useIsMobile, Validacao, maskCNPJ, maskTelefone, maskCEP, maskMoeda, ModalConfirmacao, LoadingSpinner, imprimirPDF });
+Object.assign(window, { Icon, Btn, Badge, Card, KPI, Modal, Field, Input, DateInput, CustomSelect, Textarea, BarChart, DonutChart, LineChart, Legend, EmptyState, ToastProvider, useToast, useIsMobile, Validacao, maskCPF, maskCNPJ, maskTelefone, maskCEP, maskMoeda, ModalConfirmacao, LoadingSpinner, imprimirPDF });

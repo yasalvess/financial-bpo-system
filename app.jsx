@@ -88,6 +88,15 @@ function App() {
   });
   const [t, setTweak] = useTweaks(DEFAULT_TWEAKS);
 
+  const [confirmDeleteEmp, setConfirmDeleteEmp] = useState_A(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState_A(isMobile);
+
+  useEffect_A(() => {
+    const onResize = () => setSidebarCollapsed(window.innerWidth < 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   useEffect_A(() => {
     const root = document.documentElement;
     const [r, g, b] = hexToRgb(t.primaryColor);
@@ -146,7 +155,7 @@ function App() {
   }, []);
 
   async function savePortador(p) {
-    const isNew = String(p.id).startsWith('port_');
+    const isNew = String(p.id).startsWith('port-');
     if (isNew) {
       const { data: res, error } = await window.supabaseClient.from('portadores')
         .insert({ user_id: session.user.id, nome: p.nome, tipo: p.tipo, cor: p.cor })
@@ -156,18 +165,22 @@ function App() {
         toast.push('Portador adicionado!');
       } else toast.push('Erro ao adicionar portador', 'error');
     } else {
-      const { error } = await window.supabaseClient.from('portadores')
+      const result = await window.supabaseClient.from('portadores')
         .update({ nome: p.nome, tipo: p.tipo, cor: p.cor, updated_at: new Date().toISOString() })
-        .eq('id', p.id);
-      if (!error) {
+        .eq('id', p.id)
+        .eq('user_id', session.user.id);
+      if (!result.error) {
         setData(d => ({ ...d, portadores: d.portadores.map(x => x.id === p.id ? p : x) }));
         toast.push('Portador atualizado!');
-      } else toast.push('Erro ao atualizar portador', 'error');
+      } else {
+        console.error('Supabase Error Portadores Update:', result.error);
+        toast.push('Erro ao atualizar portador', 'error');
+      }
     }
   }
 
   async function deletePortador(id) {
-    const { error } = await window.supabaseClient.from('portadores').update({ ativo: false }).eq('id', id);
+    const { error } = await window.supabaseClient.from('portadores').update({ ativo: false }).eq('id', id).eq('user_id', session.user.id);
     if (!error) {
       setData(d => ({ ...d, portadores: d.portadores.filter(x => x.id !== id) }));
       toast.push('Portador excluído');
@@ -175,7 +188,7 @@ function App() {
   }
 
   async function saveCentro(c) {
-    const isNew = String(c.id).startsWith('cc_');
+    const isNew = String(c.id).startsWith('cc-');
     if (isNew) {
       const { data: res, error } = await window.supabaseClient.from('centros_custo')
         .insert({ user_id: session.user.id, nome: c.nome, tipo: c.tipo })
@@ -185,18 +198,22 @@ function App() {
         toast.push('Centro adicionado!');
       } else toast.push('Erro ao adicionar centro', 'error');
     } else {
-      const { error } = await window.supabaseClient.from('centros_custo')
+      const result = await window.supabaseClient.from('centros_custo')
         .update({ nome: c.nome, tipo: c.tipo, updated_at: new Date().toISOString() })
-        .eq('id', c.id);
-      if (!error) {
+        .eq('id', c.id)
+        .eq('user_id', session.user.id);
+      if (!result.error) {
         setData(d => ({ ...d, centrosCusto: d.centrosCusto.map(x => x.id === c.id ? c : x) }));
         toast.push('Centro atualizado!');
-      } else toast.push('Erro ao atualizar centro', 'error');
+      } else {
+        console.error('Supabase Error Centros Update:', result.error);
+        toast.push('Erro ao atualizar centro', 'error');
+      }
     }
   }
 
   async function deleteCentro(id) {
-    const { error } = await window.supabaseClient.from('centros_custo').update({ ativo: false }).eq('id', id);
+    const { error } = await window.supabaseClient.from('centros_custo').update({ ativo: false }).eq('id', id).eq('user_id', session.user.id);
     if (!error) {
       setData(d => ({ ...d, centrosCusto: d.centrosCusto.filter(x => x.id !== id) }));
       toast.push('Centro excluído');
@@ -224,8 +241,13 @@ function App() {
   async function createEmpresa(emp) {
     const { data: resData, error } = await window.supabaseClient.from('empresas').insert({
       user_id: session.user.id,
-      nome: emp.nome, cnpj: emp.cnpj,
-      nome_fantasia: emp.nomeFantasia, segmento: emp.segmento,
+      user_id: session.user.id,
+      tipo_pessoa: emp.tipoPessoa || 'pj',
+      documento: emp.documento,
+      cnpj: emp.documento,
+      nome: emp.nome,
+      nome_fantasia: emp.tipoPessoa === 'pf' ? null : emp.nomeFantasia, 
+      segmento: emp.segmento,
       responsavel: emp.responsavel, email: emp.email, telefone: emp.telefone,
       portadores_ativos: emp.portadoresAtivos || [],
       centros_ativos: emp.centrosAtivos || []
@@ -236,8 +258,8 @@ function App() {
     setData(d => ({
       ...d,
       empresas: [...d.empresas, {
-        id: resData.id, nome: resData.nome, cnpj: resData.cnpj,
-        nomeFantasia: resData.nome_fantasia, segmento: resData.segmento,
+        id: resData.id, tipoPessoa: resData.tipo_pessoa, documento: resData.documento, cnpj: resData.cnpj,
+        nome: resData.nome, nomeFantasia: resData.nome_fantasia, segmento: resData.segmento,
         responsavel: resData.responsavel, email: resData.email, telefone: resData.telefone,
         portadoresAtivos: resData.portadores_ativos || [],
         centrosAtivos: resData.centros_ativos || [],
@@ -251,8 +273,12 @@ function App() {
   async function editEmpresa(emp) {
     const { error } = await window.supabaseClient.from('empresas')
       .update({
-        nome: emp.nome, cnpj: emp.cnpj,
-        nome_fantasia: emp.nomeFantasia, segmento: emp.segmento,
+        tipo_pessoa: emp.tipoPessoa || 'pj',
+        documento: emp.documento,
+        cnpj: emp.documento,
+        nome: emp.nome,
+        nome_fantasia: emp.tipoPessoa === 'pf' ? null : emp.nomeFantasia, 
+        segmento: emp.segmento,
         responsavel: emp.responsavel, email: emp.email, telefone: emp.telefone,
         portadores_ativos: emp.portadoresAtivos || [],
         centros_ativos: emp.centrosAtivos || [],
@@ -280,75 +306,86 @@ function App() {
   }
 
   async function upsertLanc(l) {
-    // Payload SOMENTE com campos que existem no banco (snake_case)
-    const payload = {
-      user_id: session.user.id,
-      empresa_id: l.empresaId,
-      tipo: l.tipo,
-      descricao: l.descricao,
-      valor: parseFloat(String(l.valor).replace(',', '.')) || 0,
-      vencimento: l.vencimento,  // string "YYYY-MM-DD"
-      competencia: l.competencia || competenciaFromDate(l.vencimento),
-      portador_id: l.portadorId || null,
-      centro_custo_id: l.centroCustoId || null,
-      forma_pagamento: l.formaPagamento || null,
-      pago: Boolean(l.pago),
-      pagamento_data: l.pagamento?.data || null,
-      pagamento_comprovante: l.pagamento?.comprovante || null,
-      observacao: l.observacao || ''
-      // NÃO incluir: id, empresaId, portadorId, centroCustoId (camelCase)
+    const isArray = Array.isArray(l);
+    const lancsToProcess = isArray ? l : [l];
+    const results = [];
+    const createdIds = [];
+    const empresaId = lancsToProcess[0].empresaId;
+
+    const cur = data.lancamentos[empresaId] || [];
+
+    for (const lanc of lancsToProcess) {
+      const payload = {
+        user_id: session.user.id,
+        empresa_id: lanc.empresaId,
+        tipo: lanc.tipo,
+        descricao: lanc.descricao,
+        valor: parseFloat(String(lanc.valor).replace(',', '.')) || 0,
+        vencimento: lanc.vencimento,
+        competencia: lanc.competencia || competenciaFromDate(lanc.vencimento),
+        portador_id: lanc.portadorId || null,
+        centro_custo_id: lanc.centroCustoId || null,
+        forma_pagamento: lanc.formaPagamento || null,
+        pago: Boolean(lanc.pago),
+        pagamento_data: lanc.pagamento?.data || null,
+        pagamento_comprovante: lanc.pagamento?.comprovante || null,
+        observacao: lanc.observacao || '',
+        parcela_ref: lanc.parcelaRef || null,
+        parcela_num: lanc.parcelaNum || null,
+        parcela_total: lanc.parcelaTotal || null
+      };
+
+      const existe = cur.some(x => x.id === lanc.id);
+
+      let result;
+      if (existe) {
+        result = await window.supabaseClient.from('lancamentos')
+          .update({ ...payload, updated_at: new Date().toISOString() }).eq('id', lanc.id).select().single();
+      } else {
+        result = await window.supabaseClient.from('lancamentos').insert(payload).select().single();
+      }
+
+      if (result.error) {
+        console.error('Erro Supabase:', result.error);
+        toast.push('Erro ao salvar lançamento: ' + result.error.message, 'error');
+        continue;
+      }
+
+      results.push({
+        id: result.data.id, empresaId: result.data.empresa_id, tipo: result.data.tipo,
+        descricao: result.data.descricao, valor: parseFloat(result.data.valor),
+        vencimento: result.data.vencimento, competencia: result.data.competencia,
+        portadorId: result.data.portador_id, centroCustoId: result.data.centro_custo_id,
+        formaPagamento: result.data.forma_pagamento, pago: result.data.pago,
+        pagamento: result.data.pago ? { data: result.data.pagamento_data, comprovante: result.data.pagamento_comprovante } : null,
+        observacao: result.data.observacao,
+        parcelaRef: result.data.parcela_ref, parcelaNum: result.data.parcela_num, parcelaTotal: result.data.parcela_total
+      });
+
+      if (!existe) createdIds.push(result.data.id);
     }
 
-    const cur = data.lancamentos[l.empresaId] || []
-    const existe = cur.some(x => x.id === l.id)
+    if (results.length > 0) {
+      setData(d => {
+        const current = d.lancamentos[empresaId] || [];
+        const novo = [...current];
+        results.forEach(res => {
+          const idx = novo.findIndex(x => x.id === res.id);
+          if (idx >= 0) novo[idx] = res;
+          else novo.push(res);
+        });
+        return { ...d, lancamentos: { ...d.lancamentos, [empresaId]: novo } };
+      });
 
-    let result
-    if (existe) {
-      result = await window.supabaseClient
-        .from('lancamentos')
-        .update({ ...payload, updated_at: new Date().toISOString() })
-        .eq('id', l.id)
-        .select()
-        .single()
-    } else {
-      result = await window.supabaseClient
-        .from('lancamentos')
-        .insert(payload)
-        .select()
-        .single()
+      if (isArray) toast.push(`${results.length} lançamentos criados!`);
+      else toast.push(createdIds.length > 0 ? 'Lançamento criado!' : 'Lançamento atualizado!');
     }
 
-    if (result.error) {
-      console.error('Erro Supabase:', result.error)
-      toast.push('Erro ao salvar lançamento: ' + result.error.message, 'error')
-      return
-    }
-
-    const lancNorm = {
-      id: result.data.id, empresaId: result.data.empresa_id, tipo: result.data.tipo,
-      descricao: result.data.descricao, valor: parseFloat(result.data.valor),
-      vencimento: result.data.vencimento, competencia: result.data.competencia,
-      portadorId: result.data.portador_id, centroCustoId: result.data.centro_custo_id,
-      formaPagamento: result.data.forma_pagamento, pago: result.data.pago,
-      pagamento: result.data.pago ? { data: result.data.pagamento_data, comprovante: result.data.pagamento_comprovante } : null,
-      observacao: result.data.observacao
-    };
-
-    setData(d => {
-      const current = d.lancamentos[l.empresaId] || []
-      const novo = existe
-        ? current.map(x => x.id === lancNorm.id ? lancNorm : x)
-        : [...current, lancNorm]
-      return { ...d, lancamentos: { ...d.lancamentos, [l.empresaId]: novo } }
-    })
-    toast.push(existe ? 'Lançamento atualizado!' : 'Lançamento criado!')
-
-    // Invoca edge function se for lançamento novo
-    if (!existe) {
+    createdIds.forEach(id => {
       window.supabaseClient.functions.invoke('notificacao-lancamento', {
-        body: { lancamento_id: ln.id, user_id: session.user.id }
+        body: { lancamento_id: id, user_id: session.user.id }
       }).catch(() => {});
-    }
+    });
   }
 
   async function deleteLanc(empId, lancId) {
@@ -432,9 +469,15 @@ function App() {
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--c-bg)' }}>
       <Sidebar collapsed={collapsed} setCollapsed={v => setTweak('sidebarCollapsed', v)} route={route} setRoute={setRoute}
-        isMobile={isMobile} mobileOpen={mobileNavOpen} onCloseMobile={() => setMobileNavOpen(false)} />
+        isMobile={isMobile} mobileOpen={mobileNavOpen} onCloseMobile={() => setMobileNavOpen(false)} perfil={perfil} />
 
-      <main style={{ flex: 1, minWidth: 0, background: 'var(--c-bg)', display: 'flex', flexDirection: 'column' }}>
+      <main style={{ 
+        flex: 1, minWidth: 0, background: 'var(--c-bg)', display: 'flex', flexDirection: 'column',
+        marginLeft: isMobile ? 0 : (collapsed ? 64 : 220),
+        width: isMobile ? '100%' : 'auto',
+        maxWidth: '100vw',
+        overflowX: 'hidden'
+      }}>
         <TopBar
           breadcrumb={breadcrumb}
           isMobile={isMobile}
@@ -530,11 +573,21 @@ function App() {
             if (editEmp) editEmpresa(emp); else createEmpresa(emp);
             setNewEmpOpen(false); setEditEmp(null);
           }}
-          onDelete={editEmp ? () => {
-            if (confirm(`Excluir "${editEmp.nome}"? Todos os lançamentos serão removidos.`)) {
-              deleteEmpresa(editEmp.id); setEditEmp(null);
-            }
-          } : null}
+          onDelete={editEmp ? () => setConfirmDeleteEmp(editEmp) : null}
+        />
+      )}
+
+      {confirmDeleteEmp && (
+        <ModalConfirmacao
+          open={true}
+          titulo="Excluir Empresa"
+          mensagem={`Tem certeza que deseja excluir "${confirmDeleteEmp.nome}"? Todos os lançamentos serão removidos.`}
+          onConfirmar={() => {
+            deleteEmpresa(confirmDeleteEmp.id);
+            setEditEmp(null);
+            setConfirmDeleteEmp(null);
+          }}
+          onCancelar={() => setConfirmDeleteEmp(null)}
         />
       )}
 
@@ -554,7 +607,7 @@ function App() {
 }
 
 // ----- Sidebar — SEM lista de empresas -----
-function Sidebar({ collapsed, setCollapsed, route, setRoute, isMobile, mobileOpen, onCloseMobile }) {
+function Sidebar({ collapsed, setCollapsed, route, setRoute, isMobile, mobileOpen, onCloseMobile, perfil }) {
   const items = [
     { id: 'central', label: 'Central de Gestão', icon: 'home', view: 'central' },
     { id: 'lancamentos', label: 'Lançamentos', icon: 'list', view: 'lancamentos' },
@@ -568,7 +621,7 @@ function Sidebar({ collapsed, setCollapsed, route, setRoute, isMobile, mobileOpe
     ? {
         width: 240, background: 'var(--c-bg-sidebar)', color: '#fff',
         display: 'flex', flexDirection: 'column',
-        position: 'fixed', top: 0, left: 0, height: '100vh', zIndex: 1000,
+        position: 'fixed', top: 0, bottom: 0, left: 0, zIndex: 1000,
         transform: mobileOpen ? 'translateX(0)' : 'translateX(-100%)',
         transition: 'transform 0.25s ease', overflow: 'hidden',
         boxShadow: mobileOpen ? '0 0 40px rgba(0,0,0,.4)' : 'none'
@@ -576,7 +629,7 @@ function Sidebar({ collapsed, setCollapsed, route, setRoute, isMobile, mobileOpe
     : {
         width: w, background: 'var(--c-bg-sidebar)', color: '#fff',
         display: 'flex', flexDirection: 'column', flexShrink: 0,
-        position: 'sticky', top: 0, height: '100vh',
+        position: 'fixed', top: 0, bottom: 0, left: 0, zIndex: 100,
         transition: 'width 0.22s ease', overflow: 'hidden'
       };
   return (
@@ -637,21 +690,25 @@ function Sidebar({ collapsed, setCollapsed, route, setRoute, isMobile, mobileOpe
       <div style={{ padding: collapsed ? '12px 8px' : '12px 14px', borderTop: '1px solid rgba(255,255,255,.06)', flexShrink: 0 }}>
         {!collapsed ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 99, background: 'var(--c-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 12, color: '#fff', flexShrink: 0 }}>K</div>
+            <div style={{ width: 32, height: 32, borderRadius: 99, background: 'var(--c-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 12, color: '#fff', flexShrink: 0 }}>
+              {(perfil?.nome || 'Klisia Silva').charAt(0).toUpperCase()}
+            </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ color: '#fff', fontWeight: 600, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Karla Silva</div>
-              <div style={{ fontSize: 10, color: 'rgba(255,255,255,.4)' }}>Administradora</div>
+              <div style={{ color: '#fff', fontWeight: 600, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{perfil?.nome || 'Klisia Silva'}</div>
+              <div style={{ fontSize: 10, color: 'rgba(255,255,255,.4)' }}>{perfil?.cargo || 'Administradora'}</div>
             </div>
             <button onClick={() => isMobile ? onCloseMobile() : setCollapsed(true)} style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,.35)', cursor: 'pointer', padding: 4, borderRadius: 6, transition: 'color 0.15s', flexShrink: 0 }}
-              onMouseEnter={e => e.currentTarget.style.color = '#fff'}
-              onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,.35)'}
+               onMouseEnter={e => e.currentTarget.style.color = '#fff'}
+               onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,.35)'}
             >
               <Icon name={isMobile ? 'x' : 'arrowLeft'} size={14} />
             </button>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 99, background: 'var(--c-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 12, color: '#fff' }}>K</div>
+            <div style={{ width: 32, height: 32, borderRadius: 99, background: 'var(--c-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 12, color: '#fff' }}>
+              {(perfil?.nome || 'Klisia Silva').charAt(0).toUpperCase()}
+            </div>
             <button onClick={() => setCollapsed(false)} style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,.35)', cursor: 'pointer', padding: 2, transition: 'color 0.15s' }}
               onMouseEnter={e => e.currentTarget.style.color = '#fff'}
               onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,.35)'}
@@ -1136,7 +1193,7 @@ function stringToColor(s) {
 function EmpresaWizard({ empresa, todasEmpresas, portadores, centrosCusto, onClose, onSave, onDelete }) {
   const [step, setStep] = useState_A(1);
   const [f, setF] = useState_A(empresa || {
-    id: uid('emp'), nome: '', cnpj: '', nomeFantasia: '', segmento: '',
+    id: uid('emp'), tipoPessoa: 'pj', documento: '', nome: '', nomeFantasia: '', segmento: '',
     responsavel: '', email: '', telefone: '',
     portadoresAtivos: [],
     centrosAtivos: [],
@@ -1149,15 +1206,17 @@ function EmpresaWizard({ empresa, todasEmpresas, portadores, centrosCusto, onClo
   
   function validarStep1() {
     const e = {};
-    const errNome = Validacao.required(f.nome, 'Razão Social');
-    let errCNPJ = f.cnpj ? Validacao.cnpj(f.cnpj) : Validacao.required(f.cnpj, 'CNPJ');
+    const errNome = Validacao.required(f.nome, f.tipoPessoa === 'pj' ? 'Razão Social' : 'Nome Completo');
     
-    // Verificação de duplicidade de CNPJ
-    if (!errCNPJ && todasEmpresas) {
-      const cleanCNPJ = f.cnpj.replace(/\D/g, '');
-      const existe = todasEmpresas.find(emp => emp.cnpj.replace(/\D/g, '') === cleanCNPJ && emp.id !== f.id);
+    let errDoc = null;
+    if (!f.documento) errDoc = f.tipoPessoa === 'pj' ? 'CNPJ obrigatório' : 'CPF obrigatório';
+    else errDoc = f.tipoPessoa === 'pj' ? Validacao.cnpj(f.documento) : Validacao.cpf(f.documento);
+    
+    if (!errDoc && todasEmpresas) {
+      const cleanDoc = f.documento.replace(/\D/g, '');
+      const existe = todasEmpresas.find(emp => (emp.documento?.replace(/\D/g, '') === cleanDoc || emp.cnpj?.replace(/\D/g, '') === cleanDoc) && emp.id !== f.id);
       if (existe) {
-        errCNPJ = 'Este CNPJ já está cadastrado em outra empresa.';
+        errDoc = 'Este documento já está cadastrado em outra empresa.';
       }
     }
 
@@ -1165,7 +1224,7 @@ function EmpresaWizard({ empresa, todasEmpresas, portadores, centrosCusto, onClo
     const errTelefone = f.telefone ? Validacao.telefone(f.telefone) : null;
 
     if (errNome) e.nome = errNome;
-    if (errCNPJ) e.cnpj = errCNPJ;
+    if (errDoc) e.documento = errDoc;
     if (errEmail) e.email = errEmail;
     if (errTelefone) e.telefone = errTelefone;
 
@@ -1194,7 +1253,7 @@ function EmpresaWizard({ empresa, todasEmpresas, portadores, centrosCusto, onClo
   }
 
   return (
-    <Modal open onClose={onClose} title={empresa ? 'Editar Empresa' : 'Cadastrar Nova Empresa'} width={620}
+    <Modal open onClose={onClose} disableBackdropClick title={empresa ? 'Editar Empresa' : 'Cadastrar Nova Empresa'} width={620}
       footer={<>
         {onDelete && <Btn variant="danger" icon="trash" onClick={onDelete} style={{ marginRight: 'auto' }}>Excluir</Btn>}
         <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
@@ -1220,16 +1279,29 @@ function EmpresaWizard({ empresa, todasEmpresas, portadores, centrosCusto, onClo
 
       {step === 1 && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-          <Field label="Razão Social" required span={2} erro={erros.nome}>
-            <Input value={f.nome} onChange={e => set('nome', e.target.value)} placeholder="Ex: Padaria Bom Pão Ltda" autoFocus style={{ borderColor: erros.nome ? '#dc2626' : undefined }} />
+          <div style={{ gridColumn: 'span 2', display: 'flex', gap: 12, marginBottom: 4 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, cursor: 'pointer' }}>
+              <input type="radio" name="tipoPessoa" checked={f.tipoPessoa !== 'pf'} onChange={() => set('tipoPessoa', 'pj')} /> Pessoa Jurídica (CNPJ)
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, cursor: 'pointer' }}>
+              <input type="radio" name="tipoPessoa" checked={f.tipoPessoa === 'pf'} onChange={() => set('tipoPessoa', 'pf')} /> Pessoa Física (CPF)
+            </label>
+          </div>
+          
+          <Field label={f.tipoPessoa === 'pj' ? "Razão Social" : "Nome Completo"} required span={2} erro={erros.nome}>
+            <Input value={f.nome} onChange={e => set('nome', e.target.value)} placeholder={f.tipoPessoa === 'pj' ? "Ex: Padaria Bom Pão Ltda" : "Ex: João da Silva"} autoFocus style={{ borderColor: erros.nome ? '#dc2626' : undefined }} />
             {erros.nome && <span style={{ fontSize:11, color:'#dc2626', marginTop:2 }}>{erros.nome}</span>}
           </Field>
-          <Field label="Nome Fantasia" span={2}>
-            <Input value={f.nomeFantasia || ''} onChange={e => set('nomeFantasia', e.target.value)} placeholder="Como a empresa é conhecida" />
-          </Field>
-          <Field label="CNPJ" required erro={erros.cnpj}>
-            <Input value={f.cnpj} onChange={e => set('cnpj', maskCNPJ(e.target.value))} placeholder="00.000.000/0000-00" maxLength={18} style={{ borderColor: erros.cnpj ? '#dc2626' : undefined }} />
-            {erros.cnpj && <span style={{ fontSize:11, color:'#dc2626', marginTop:2 }}>{erros.cnpj}</span>}
+          
+          {f.tipoPessoa === 'pj' && (
+            <Field label="Nome Fantasia" span={2}>
+              <Input value={f.nomeFantasia || ''} onChange={e => set('nomeFantasia', e.target.value)} placeholder="Como a empresa é conhecida" />
+            </Field>
+          )}
+          
+          <Field label={f.tipoPessoa === 'pj' ? "CNPJ" : "CPF"} required erro={erros.documento}>
+            <Input value={f.documento || f.cnpj || ''} onChange={e => set('documento', f.tipoPessoa === 'pj' ? maskCNPJ(e.target.value) : maskCPF(e.target.value))} placeholder={f.tipoPessoa === 'pj' ? "00.000.000/0000-00" : "000.000.000-00"} maxLength={18} style={{ borderColor: erros.documento ? '#dc2626' : undefined }} />
+            {erros.documento && <span style={{ fontSize:11, color:'#dc2626', marginTop:2 }}>{erros.documento}</span>}
           </Field>
           <Field label="Setor"><Input value={f.segmento || ''} onChange={e => set('segmento', e.target.value)} placeholder="Ex: Alimentação" /></Field>
           <Field label="Responsável"><Input value={f.responsavel || ''} onChange={e => set('responsavel', e.target.value)} /></Field>
