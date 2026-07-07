@@ -97,24 +97,26 @@ serve(async (req) => {
       owner_id: user.id
     }).eq('id', novoUsuario.user.id);
 
-    // Vincula às empresas
+    // Vincula às empresas (inserção um a um para evitar problemas de parsing em lote)
     if (empresasIds && empresasIds.length > 0) {
-      const vinculacoes = empresasIds.map((empId: string) => ({
-        user_id: novoUsuario.user.id,
-        empresa_id: empId
-      }));
-      const { error: vincError } = await supabaseAdmin.from('usuarios_empresas').insert(vinculacoes);
-      if (vincError) throw vincError;
+      for (const empId of empresasIds) {
+        const { error: vincError } = await supabaseAdmin.from('usuarios_empresas').insert({
+          user_id: novoUsuario.user.id,
+          empresa_id: empId
+        });
+        if (vincError) throw vincError;
+      }
     }
 
-    // Registra na tabela de convites para histórico/controle
+    // Registra na tabela de convites para histórico/controle (formatado como array literal do postgres)
+    const pgArray = `{${(empresasIds || []).join(',')}}`;
     await supabaseAdmin.from('convites').insert({
       user_id: user.id,
       email_convidado: email.toLowerCase().trim(),
       papel: cargo,
       nome: nome.trim(),
       senha_temporaria: password,
-      empresas_ids: empresasIds || [],
+      empresas_ids: pgArray,
       status: 'pendente'
     });
 

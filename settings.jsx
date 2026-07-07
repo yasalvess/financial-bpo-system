@@ -795,14 +795,24 @@ function AbaUsuarios({ session, data }) {
     if (!confirmRevogar) return;
     setLoading(true);
     try {
-      const response = await window.supabaseClient.functions.invoke('admin-criar-usuario', {
-        body: {
+      const { data: { session: currentSession } } = await window.supabaseClient.auth.getSession();
+      const token = currentSession?.access_token;
+      const response = await fetch('https://svgvtmkqjvxsoduohfuy.supabase.co/functions/v1/admin-criar-usuario', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
           action: 'delete',
           id: confirmRevogar.id,
           isConvite: confirmRevogar.isConvite
-        }
+        })
       });
-      if (response.error) throw new Error(response.error.message || 'Erro ao revogar acesso');
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => ({}));
+        throw new Error(errJson.error || 'Erro ao revogar acesso');
+      }
       
       toast.push('Acesso revogado com sucesso!', 'success');
       setConfirmRevogar(null);
@@ -837,16 +847,26 @@ function AbaUsuarios({ session, data }) {
 
     setLoading(true);
     try {
-      const response = await window.supabaseClient.functions.invoke('admin-criar-usuario', {
-        body: {
+      const { data: { session: currentSession } } = await window.supabaseClient.auth.getSession();
+      const token = currentSession?.access_token;
+      const response = await fetch('https://svgvtmkqjvxsoduohfuy.supabase.co/functions/v1/admin-criar-usuario', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
           email: emailNovo.toLowerCase().trim(),
           password: senhaNova,
           nome: nomeNovo.trim(),
           cargo: PAPEIS.find(p=>p.value===papelNovo)?.label || 'Analista',
           empresasIds: papelNovo === 'admin' ? data.empresas.map(e=>e.id) : empresasSelecionadas
-        }
+        })
       });
-      if (response.error) throw new Error(response.error.message || 'Erro ao criar usuário');
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => ({}));
+        throw new Error(errJson.error || 'Erro ao criar usuário');
+      }
       
       toast.push(`Convite criado com sucesso para ${nomeNovo}!`, 'success');
       setNomeNovo(''); setEmailNovo(''); setSenhaNova(''); setEmpresasSelecionadas([]);
