@@ -12,7 +12,7 @@ function useAppData(userId) {
     setData(d => ({ ...d, loading: true, error: null }));
     try {
       const [emps, ports, centros, formas] = await Promise.all([
-        supabaseClient.from('empresas').select('*').eq('ativo', true).order('nome'),
+        supabaseClient.from('empresas').select('*').order('nome'),
         supabaseClient.from('portadores').select('*').eq('ativo', true).order('nome'),
         supabaseClient.from('centros_custo').select('*').eq('ativo', true).order('nome'),
         supabaseClient.from('formas_pagamento').select('*').eq('ativo', true).order('ordem'),

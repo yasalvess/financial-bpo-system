@@ -560,6 +560,7 @@ function App() {
         data={data}
         onSelectEmpresa={(id) => { setRoute({ view: 'empresa', id }); setSearchOpen(false); }}
         onNewEmpresa={() => { setSearchOpen(false); setNewEmpOpen(true); }}
+        perfil={perfil}
       />
 
       {(newEmpOpen || editEmp) && (
@@ -802,6 +803,7 @@ function TopBar({ breadcrumb, isMobile, onMenuClick, onSearchClick, notifCount, 
               data={data}
               onSelectEmpresa={onSelectEmpresa}
               onNewEmpresa={onNewEmpresa}
+              perfil={perfil}
             />
           )}
         </div>
@@ -852,7 +854,9 @@ function TopBar({ breadcrumb, isMobile, onMenuClick, onSearchClick, notifCount, 
 }
 
 // ----- Dropdown Empresas -----
-function EmpresasDropdown({ data, onSelectEmpresa, onNewEmpresa }) {
+function EmpresasDropdown({ data, onSelectEmpresa, onNewEmpresa, perfil }) {
+  const cargoLower = (perfil?.cargo || '').toLowerCase();
+  const isAdmin = cargoLower.includes('admin') || cargoLower.includes('administrador');
   const [q, setQ] = useState_A('');
   const inputRef = useRef_A(null);
   const hoje = todayISO();
@@ -903,24 +907,26 @@ function EmpresasDropdown({ data, onSelectEmpresa, onNewEmpresa }) {
         {q && <button onClick={() => setQ('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-text-muted)', padding: 2 }}><Icon name="x" size={13} /></button>}
       </div>
 
-      {/* Nova empresa — sempre visível no topo */}
-      <button onClick={onNewEmpresa} style={{
-        width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-        padding: '10px 14px', background: 'transparent', border: 'none',
-        borderBottom: '1px solid var(--c-border)', cursor: 'pointer', fontFamily: 'inherit',
-        transition: 'background 0.1s'
-      }}
-        onMouseEnter={e => e.currentTarget.style.background = 'var(--c-primary-soft)'}
-        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-      >
-        <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--c-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <Icon name="plus" size={15} color="#fff" />
-        </div>
-        <div style={{ flex: 1, textAlign: 'left' }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-primary)' }}>Cadastrar nova empresa</div>
-          <div style={{ fontSize: 11, color: 'var(--c-text-muted)' }}>Criar novo workspace de cliente</div>
-        </div>
-      </button>
+      {/* Nova empresa — visível apenas para administradores */}
+      {isAdmin && (
+        <button onClick={onNewEmpresa} style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+          padding: '10px 14px', background: 'transparent', border: 'none',
+          borderBottom: '1px solid var(--c-border)', cursor: 'pointer', fontFamily: 'inherit',
+          transition: 'background 0.1s'
+        }}
+          onMouseEnter={e => e.currentTarget.style.background = 'var(--c-primary-soft)'}
+          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+        >
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--c-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Icon name="plus" size={15} color="#fff" />
+          </div>
+          <div style={{ flex: 1, textAlign: 'left' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-primary)' }}>Cadastrar nova empresa</div>
+            <div style={{ fontSize: 11, color: 'var(--c-text-muted)' }}>Criar novo workspace de cliente</div>
+          </div>
+        </button>
+      )}
 
       {/* Lista agrupada por status */}
       <div style={{ maxHeight: 360, overflowY: 'auto' }}>
@@ -1084,7 +1090,9 @@ const topBarBtn = {
 };
 
 // ----- Search Overlay (Cmd+K) -----
-function SearchOverlay({ open, onClose, data, onSelectEmpresa, onNewEmpresa }) {
+function SearchOverlay({ open, onClose, data, onSelectEmpresa, onNewEmpresa, perfil }) {
+  const cargoLower = (perfil?.cargo || '').toLowerCase();
+  const isAdmin = cargoLower.includes('admin') || cargoLower.includes('administrador');
   const [q, setQ] = useState_A('');
   const inputRef = useRef_A(null);
   const hoje = todayISO();
@@ -1119,17 +1127,19 @@ function SearchOverlay({ open, onClose, data, onSelectEmpresa, onNewEmpresa }) {
           <kbd style={kbdStyle}>ESC</kbd>
         </div>
 
-        <button onClick={onNewEmpresa} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 18px', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', borderBottom: '1px solid var(--c-border)', fontFamily: 'inherit', transition: 'background 0.1s' }}
-          onMouseEnter={e => e.currentTarget.style.background = 'var(--c-primary-soft)'}
-          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-        >
-          <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--c-primary)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="plus" size={18} /></div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>Cadastrar nova empresa</div>
-            <div style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>Criar workspace para um novo cliente</div>
-          </div>
-          <kbd style={kbdStyle}>+ N</kbd>
-        </button>
+        {isAdmin && (
+          <button onClick={onNewEmpresa} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 18px', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', borderBottom: '1px solid var(--c-border)', fontFamily: 'inherit', transition: 'background 0.1s' }}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--c-primary-soft)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+          >
+            <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--c-primary)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="plus" size={18} /></div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>Cadastrar nova empresa</div>
+              <div style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>Criar workspace para um novo cliente</div>
+            </div>
+            <kbd style={kbdStyle}>+ N</kbd>
+          </button>
+        )}
 
         <div style={{ padding: '6px 0', maxHeight: 420, overflowY: 'auto' }}>
           <div style={{ padding: '8px 18px 4px', fontSize: 10, fontWeight: 700, color: 'var(--c-text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
