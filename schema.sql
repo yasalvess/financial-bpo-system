@@ -153,7 +153,7 @@ create policy "empresas_select" on public.empresas for select
     user_id = auth.uid() or
     exists (
       select 1 from public.usuarios_empresas 
-      where usuarios_empresas.empresa_id = id 
+      where usuarios_empresas.empresa_id = empresas.id 
       and usuarios_empresas.user_id = auth.uid()
     )
   );
