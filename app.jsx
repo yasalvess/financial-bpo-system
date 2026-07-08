@@ -239,12 +239,12 @@ function App() {
   }
 
   async function createEmpresa(emp) {
+    const docValue = (emp.documento && emp.documento.trim() !== '') ? emp.documento.trim() : null;
     const { data: resData, error } = await window.supabaseClient.from('empresas').insert({
       user_id: session.user.id,
-      user_id: session.user.id,
       tipo_pessoa: emp.tipoPessoa || 'pj',
-      documento: emp.documento,
-      cnpj: emp.documento,
+      documento: docValue,
+      cnpj: docValue,
       nome: emp.nome,
       nome_fantasia: emp.tipoPessoa === 'pf' ? null : emp.nomeFantasia, 
       segmento: emp.segmento,
@@ -271,11 +271,12 @@ function App() {
   }
 
   async function editEmpresa(emp) {
+    const docValue = (emp.documento && emp.documento.trim() !== '') ? emp.documento.trim() : null;
     const { error } = await window.supabaseClient.from('empresas')
       .update({
         tipo_pessoa: emp.tipoPessoa || 'pj',
-        documento: emp.documento,
-        cnpj: emp.documento,
+        documento: docValue,
+        cnpj: docValue,
         nome: emp.nome,
         nome_fantasia: emp.tipoPessoa === 'pf' ? null : emp.nomeFantasia, 
         segmento: emp.segmento,
@@ -1219,14 +1220,15 @@ function EmpresaWizard({ empresa, todasEmpresas, portadores, centrosCusto, onClo
     const errNome = Validacao.required(f.nome, f.tipoPessoa === 'pj' ? 'Razão Social' : 'Nome Completo');
     
     let errDoc = null;
-    if (!f.documento) errDoc = f.tipoPessoa === 'pj' ? 'CNPJ obrigatório' : 'CPF obrigatório';
-    else errDoc = f.tipoPessoa === 'pj' ? Validacao.cnpj(f.documento) : Validacao.cpf(f.documento);
-    
-    if (!errDoc && todasEmpresas) {
-      const cleanDoc = f.documento.replace(/\D/g, '');
-      const existe = todasEmpresas.find(emp => (emp.documento?.replace(/\D/g, '') === cleanDoc || emp.cnpj?.replace(/\D/g, '') === cleanDoc) && emp.id !== f.id);
-      if (existe) {
-        errDoc = 'Este documento já está cadastrado em outra empresa.';
+    if (f.documento && f.documento.trim() !== '') {
+      errDoc = f.tipoPessoa === 'pj' ? Validacao.cnpj(f.documento) : Validacao.cpf(f.documento);
+      
+      if (!errDoc && todasEmpresas) {
+        const cleanDoc = f.documento.replace(/\D/g, '');
+        const existe = todasEmpresas.find(emp => (emp.documento?.replace(/\D/g, '') === cleanDoc || emp.cnpj?.replace(/\D/g, '') === cleanDoc) && emp.id !== f.id);
+        if (existe) {
+          errDoc = 'Este documento já está cadastrado em outra empresa.';
+        }
       }
     }
 
