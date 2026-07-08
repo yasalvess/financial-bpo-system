@@ -15,7 +15,7 @@ create table if not exists public.empresas (
   id uuid default gen_random_uuid() primary key,
   user_id uuid references auth.users(id) on delete cascade not null,
   nome text not null,
-  cnpj text unique not null,
+  cnpj text unique,
   nome_fantasia text,
   segmento text,
   responsavel text,
