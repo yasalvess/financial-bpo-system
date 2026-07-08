@@ -1311,7 +1311,7 @@ function EmpresaWizard({ empresa, todasEmpresas, portadores, centrosCusto, onClo
             </Field>
           )}
           
-          <Field label={f.tipoPessoa === 'pj' ? "CNPJ" : "CPF"} required erro={erros.documento}>
+          <Field label={f.tipoPessoa === 'pj' ? "CNPJ" : "CPF"} erro={erros.documento}>
             <Input value={f.documento || f.cnpj || ''} onChange={e => set('documento', f.tipoPessoa === 'pj' ? maskCNPJ(e.target.value) : maskCPF(e.target.value))} placeholder={f.tipoPessoa === 'pj' ? "00.000.000/0000-00" : "000.000.000-00"} maxLength={18} style={{ borderColor: erros.documento ? '#dc2626' : undefined }} />
             {erros.documento && <span style={{ fontSize:11, color:'#dc2626', marginTop:2 }}>{erros.documento}</span>}
           </Field>
