@@ -18,6 +18,14 @@ function useAppData(userId) {
         supabaseClient.from('formas_pagamento').select('*').eq('ativo', true).order('ordem'),
       ]);
 
+      let pagamentosList = [];
+      try {
+        const { data: pgsData } = await supabaseClient.from('pagamentos_parciais').select('*');
+        pagamentosList = pgsData || [];
+      } catch (pgError) {
+        console.warn('Tabela pagamentos_parciais não encontrada ou sem acesso. Rodar SQL de migration.', pgError);
+      }
+
       const empresas = emps.data || [];
 
       // Carrega lançamentos de todas as empresas
@@ -32,7 +40,7 @@ function useAppData(userId) {
         
         empresas.forEach(e => lancMap[e.id] = []);
         (lancs || []).forEach(l => {
-          if (lancMap[l.empresa_id]) lancMap[l.empresa_id].push(normalizelanc(l));
+          if (lancMap[l.empresa_id]) lancMap[l.empresa_id].push(normalizelanc(l, pagamentosList));
         });
       }
 
@@ -65,15 +73,40 @@ function normalizeEmpresa(e) {
   };
 }
 
-function normalizelanc(l) {
+function normalizelanc(l, pagamentosList = []) {
+  const pgs = pagamentosList
+    .filter(p => p.lancamento_id === l.id)
+    .map(p => ({
+      id: p.id,
+      valor: parseFloat(p.valor),
+      data: p.data,
+      portadorId: p.portador_id,
+      comprovante: p.comprovante
+    }));
+  
+  const totalPago = pgs.reduce((sum, p) => sum + p.valor, 0);
+  const saldoRestante = parseFloat((parseFloat(l.valor) - totalPago).toFixed(2));
+  
+  let statusPg = 'pendente';
+  if (l.pago || saldoRestante <= 0) {
+    statusPg = 'pago';
+  } else if (totalPago > 0) {
+    statusPg = 'parcial';
+  }
+
   return {
     id: l.id, empresaId: l.empresa_id, tipo: l.tipo,
     descricao: l.descricao, valor: parseFloat(l.valor),
     vencimento: l.vencimento, competencia: l.competencia,
     portadorId: l.portador_id, centroCustoId: l.centro_custo_id,
-    formaPagamento: l.forma_pagamento, pago: l.pago,
-    pagamento: l.pago ? { data: l.pagamento_data, comprovante: l.pagamento_comprovante } : null,
-    observacao: l.observacao
+    formaPagamento: l.forma_pagamento, 
+    pago: l.pago || statusPg === 'pago',
+    pagamento: (l.pago || statusPg === 'pago') ? { data: l.pagamento_data || (pgs.length > 0 ? pgs[pgs.length - 1].data : l.vencimento), comprovante: l.pagamento_comprovante || (pgs.length > 0 ? pgs[pgs.length - 1].comprovante : '') } : null,
+    observacao: l.observacao,
+    pagamentosParciais: pgs,
+    totalPago: totalPago,
+    saldoRestante: saldoRestante,
+    statusPg: statusPg
   };
 }
 

@@ -90,7 +90,8 @@ function competenciaFromDate(iso) {
 
 // Status calculation
 function lancStatus(l, hojeISO) {
-  if (l.pago) return 'pago';
+  if (l.pago || l.statusPg === 'pago') return 'pago';
+  if (l.statusPg === 'parcial') return 'parcial';
   const diff = daysBetween(hojeISO, l.vencimento);
   if (diff < 0) return 'vencido';
   if (diff <= 7) return 'vencendo';
@@ -100,6 +101,7 @@ function lancStatus(l, hojeISO) {
 function statusColor(status) {
   return {
     'pago': { bg: 'var(--c-green-bg)', fg: 'var(--c-green-fg)', dot: '#16a34a', label: 'Pago' },
+    'parcial': { bg: 'rgba(59, 130, 246, 0.15)', fg: '#2563eb', dot: '#2563eb', label: 'Parcial' },
     'em-dia': { bg: 'var(--c-blue-bg)', fg: 'var(--c-blue-fg)', dot: '#3b82f6', label: 'Em dia' },
     'vencendo': { bg: 'var(--c-amber-bg)', fg: 'var(--c-amber-fg)', dot: '#f59e0b', label: 'Vencendo' },
     'vencido': { bg: 'var(--c-red-bg)', fg: 'var(--c-red-fg)', dot: '#ef4444', label: 'Vencido' },
@@ -186,16 +188,20 @@ function empresaStats(empresa, lancs, hoje) {
   let cntVencido = 0, cntVencendo = 0, cntEmDia = 0;
   lancs.forEach(l => {
     const s = lancStatus(l, hoje);
+    const valorAberto = l.saldoRestante !== undefined ? l.saldoRestante : (l.pago ? 0 : l.valor);
+    const valorRealizado = l.totalPago !== undefined ? l.totalPago : (l.pago ? l.valor : 0);
+
     if (l.tipo === 'entrada') {
-      if (l.pago) recebido += l.valor;
-      else aReceber += l.valor;
+      recebido += valorRealizado;
+      aReceber += valorAberto;
     } else {
-      if (l.pago) pago += l.valor;
-      else aPagar += l.valor;
+      pago += valorRealizado;
+      aPagar += valorAberto;
     }
-    if (!l.pago) {
-      if (s === 'vencido') { vencidos += l.valor; cntVencido++; }
-      else if (s === 'vencendo') { vencendo += l.valor; cntVencendo++; }
+
+    if (!l.pago && l.statusPg !== 'pago') {
+      if (s === 'vencido') { vencidos += valorAberto; cntVencido++; }
+      else if (s === 'vencendo') { vencendo += valorAberto; cntVencendo++; }
       else cntEmDia++;
     }
   });
@@ -210,12 +216,21 @@ function portadorSaldos(lancs, portadores) {
   const map = {};
   portadores.forEach(p => map[p.id] = { ...p, entradas: 0, saidas: 0, saldo: 0, movs: 0 });
   lancs.forEach(l => {
-    if (!l.pago) return;
-    const p = map[l.portadorId];
-    if (!p) return;
-    if (l.tipo === 'entrada') p.entradas += l.valor;
-    else p.saidas += l.valor;
-    p.movs++;
+    if (l.pagamentosParciais && l.pagamentosParciais.length > 0) {
+      l.pagamentosParciais.forEach(pg => {
+        const p = map[pg.portadorId];
+        if (!p) return;
+        if (l.tipo === 'entrada') p.entradas += pg.valor;
+        else p.saidas += pg.valor;
+        p.movs++;
+      });
+    } else if (l.pago) {
+      const p = map[l.portadorId];
+      if (!p) return;
+      if (l.tipo === 'entrada') p.entradas += l.valor;
+      else p.saidas += l.valor;
+      p.movs++;
+    }
   });
   Object.values(map).forEach(p => p.saldo = p.entradas - p.saidas);
   return Object.values(map);
@@ -229,8 +244,11 @@ function centroCustoStats(lancs, centros) {
     if (!c) return;
     c.total += l.valor;
     c.qtd++;
-    if (l.pago) c.pago += l.valor;
-    else c.pendente += l.valor;
+    
+    const pagoValor = l.totalPago !== undefined ? l.totalPago : (l.pago ? l.valor : 0);
+    const pendenteValor = l.saldoRestante !== undefined ? l.saldoRestante : (l.pago ? 0 : l.valor);
+    c.pago += pagoValor;
+    c.pendente += pendenteValor;
   });
   return Object.values(map);
 }

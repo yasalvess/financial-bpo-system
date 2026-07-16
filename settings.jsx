@@ -745,6 +745,7 @@ function AbaUsuarios({ session, data }) {
   const [papelNovo, setPapelNovo] = useState_S('analista');
   const [empresasSelecionadas, setEmpresasSelecionadas] = useState_S([]);
   const [loading, setLoading] = useState_S(false);
+  const [editUsuario, setEditUsuario] = useState_S(null);
   const toast = useToast();
 
   const PAPEIS = [
@@ -1022,11 +1023,31 @@ function AbaUsuarios({ session, data }) {
                     <span style={{ fontSize:11, color:'var(--c-text-muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={nomesEmpresas}>
                       {vinculadas.length} empresa(s)
                     </span>
+                    {c.ativo === false && (
+                      <>
+                        <span style={{ fontSize:11, color:'var(--c-text-muted)' }}>·</span>
+                        <span style={{ fontSize:11, fontWeight:600, color: '#dc2626' }}>Inativo</span>
+                      </>
+                    )}
                   </div>
                 </div>
-                <button onClick={() => revogarAcesso(c.id, c.isConvite)} style={{ background:'none', border:'1px solid var(--c-border)', borderRadius:6, padding:'4px 10px', cursor:'pointer', fontSize:12, color:'var(--c-text-muted)', fontFamily:'inherit' }}>
-                  Remover
-                </button>
+                <div style={{ display:'flex', gap:6 }}>
+                  {!c.isConvite && (
+                    <button onClick={() => setEditUsuario({
+                      id: c.id,
+                      nome: c.nome,
+                      email: c.email,
+                      cargo: c.cargo,
+                      empresasIds: vinculadas,
+                      ativo: c.ativo !== false
+                    })} style={{ background:'none', border:'1px solid var(--c-border)', borderRadius:6, padding:'4px 10px', cursor:'pointer', fontSize:12, color:'var(--c-text)', fontFamily:'inherit' }}>
+                      Editar
+                    </button>
+                  )}
+                  <button onClick={() => revogarAcesso(c.id, c.isConvite)} style={{ background:'none', border:'1px solid var(--c-border)', borderRadius:6, padding:'4px 10px', cursor:'pointer', fontSize:12, color:'#dc2626', fontFamily:'inherit' }}>
+                    Remover
+                  </button>
+                </div>
               </div>
             )})}
           </div>
@@ -1044,7 +1065,145 @@ function AbaUsuarios({ session, data }) {
           onCancelar={() => setConfirmRevogar(null)}
         />
       )}
+
+      {editUsuario && (
+        <ModalEditarUsuario
+          usuario={editUsuario}
+          todasEmpresas={data.empresas}
+          onClose={() => setEditUsuario(null)}
+          loading={loading}
+          onSave={async (payload) => {
+            setLoading(true);
+            try {
+              const { data: { session: currentSession } } = await window.supabaseClient.auth.getSession();
+              const token = currentSession?.access_token;
+              const response = await fetch('https://svgvtmkqjvxsoduohfuy.supabase.co/functions/v1/admin-criar-usuario', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                  action: 'update',
+                  ...payload
+                })
+              });
+              
+              if (!response.ok) {
+                const errJson = await response.json().catch(() => ({}));
+                throw new Error(errJson.error || 'Erro ao atualizar usuário');
+              }
+
+              toast.push('Usuário atualizado com sucesso!', 'success');
+              setEditUsuario(null);
+              carregarConvites();
+            } catch (err) {
+              toast.push(err.message, 'error');
+            }
+            setLoading(false);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+function ModalEditarUsuario({ usuario, todasEmpresas, onClose, onSave, loading }) {
+  const [nome, setNome] = useState_S(usuario.nome);
+  const [email, setEmail] = useState_S(usuario.email);
+  const [cargo, setCargo] = useState_S(usuario.cargo);
+  const [ativo, setAtivo] = useState_S(usuario.ativo);
+  const [empresasSelecionadas, setEmpresasSelecionadas] = useState_S(usuario.empresasIds || []);
+  const toast = useToast();
+
+  const PAPEIS = [
+    { value: 'admin', label: 'Administrador' },
+    { value: 'analista', label: 'Analista' },
+    { value: 'visualizador', label: 'Visualizador' }
+  ];
+
+  function salvar() {
+    if (!nome.trim()) return toast.push('Nome é obrigatório', 'error');
+    if (!email.trim()) return toast.push('E-mail é obrigatório', 'error');
+
+    onSave({
+      id: usuario.id,
+      nome: nome.trim(),
+      email: email.trim().toLowerCase(),
+      cargo,
+      ativo,
+      empresasIds: cargo === 'admin' ? todasEmpresas.map(e => e.id) : empresasSelecionadas
+    });
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Editar Usuário" width={560}
+      footer={<>
+        <Btn variant="secondary" onClick={onClose} disabled={loading}>Cancelar</Btn>
+        <Btn variant="primary" onClick={salvar} disabled={loading}>
+          {loading ? 'Salvando...' : 'Salvar Alterações'}
+        </Btn>
+      </>}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <Field label="Nome Completo">
+          <Input value={nome} onChange={e => setNome(e.target.value)} />
+        </Field>
+        <Field label="E-mail">
+          <Input type="email" value={email} onChange={e => setEmail(e.target.value)} />
+        </Field>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <Field label="Cargo / Função">
+            <CustomSelect value={cargo} onChange={e => {
+              setCargo(e.target.value);
+              if (e.target.value === 'admin') {
+                setEmpresasSelecionadas(todasEmpresas.map(emp => emp.id));
+              }
+            }} options={PAPEIS} />
+          </Field>
+          <Field label="Status da Conta">
+            <CustomSelect value={ativo ? 'ativo' : 'inativo'} onChange={e => setAtivo(e.target.value === 'ativo')} options={[
+              { value: 'ativo', label: 'Ativo' },
+              { value: 'inativo', label: 'Inativo' }
+            ]} />
+          </Field>
+        </div>
+
+        {cargo !== 'admin' && (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>
+              Empresas com acesso
+            </div>
+            <div style={{ border: '1.5px solid var(--c-border)', borderRadius: 10, overflow: 'hidden', background: 'var(--c-surface)', maxHeight: 200, overflowY: 'auto' }}>
+              {todasEmpresas.length === 0 ? (
+                <div style={{ padding: '14px 16px', fontSize: 13, color: 'var(--c-text-muted)', textAlign: 'center' }}>
+                  Nenhuma empresa cadastrada
+                </div>
+              ) : todasEmpresas.map((emp, i) => {
+                const selecionada = empresasSelecionadas.includes(emp.id);
+                return (
+                  <div key={emp.id} onClick={() => {
+                    if (selecionada) setEmpresasSelecionadas(empresasSelecionadas.filter(id => id !== emp.id));
+                    else setEmpresasSelecionadas([...empresasSelecionadas, emp.id]);
+                  }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', cursor: 'pointer',
+                      borderBottom: i < todasEmpresas.length - 1 ? '1px solid var(--c-border)' : 'none',
+                      background: selecionada ? 'var(--c-primary-soft)' : 'transparent',
+                      transition: 'background 0.1s'
+                    }}
+                  >
+                    <div style={{ width: 18, height: 18, borderRadius: 4, border: '1.5px solid var(--c-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: selecionada ? 'var(--c-primary)' : 'transparent', borderColor: selecionada ? 'var(--c-primary)' : 'var(--c-border)' }}>
+                      {selecionada && <Icon name="check" size={12} color="#fff" strokeWidth={3} />}
+                    </div>
+                    <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--c-text)' }}>{emp.nome}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }
 

@@ -238,10 +238,10 @@ function ContasTab({ empresa, lancamentos, portadores, centrosCusto, formasPagam
   const totalPaginas = Math.ceil(totalFiltrados / POR_PAGINA);
   const paginados = filtrados.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
 
-  const totalReceber = filtrados.filter(l => l.tipo === 'entrada' && !l.pago).reduce((s, l) => s + l.valor, 0);
-  const totalPagar = filtrados.filter(l => l.tipo === 'saida' && !l.pago).reduce((s, l) => s + l.valor, 0);
-  const totalRecebido = filtrados.filter(l => l.tipo === 'entrada' && l.pago).reduce((s, l) => s + l.valor, 0);
-  const totalPago = filtrados.filter(l => l.tipo === 'saida' && l.pago).reduce((s, l) => s + l.valor, 0);
+  const totalReceber = filtrados.filter(l => l.tipo === 'entrada' && !l.pago).reduce((s, l) => s + (l.saldoRestante !== undefined ? l.saldoRestante : l.valor), 0);
+  const totalPagar = filtrados.filter(l => l.tipo === 'saida' && !l.pago).reduce((s, l) => s + (l.saldoRestante !== undefined ? l.saldoRestante : l.valor), 0);
+  const totalRecebido = filtrados.filter(l => l.tipo === 'entrada').reduce((s, l) => s + (l.totalPago !== undefined ? l.totalPago : (l.pago ? l.valor : 0)), 0);
+  const totalPago = filtrados.filter(l => l.tipo === 'saida').reduce((s, l) => s + (l.totalPago !== undefined ? l.totalPago : (l.pago ? l.valor : 0)), 0);
 
   function clearFilters() {
     setFiltros({ tipo: 'todos', status: 'todos', portador: 'todos', centroCusto: 'todos', formaPgto: 'todos', dataIni: '', dataFim: '', busca: '' });
@@ -252,10 +252,10 @@ function ContasTab({ empresa, lancamentos, portadores, centrosCusto, formasPagam
     <div>
       {/* mini KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
-        <KPI label="A Receber" value={formatBRL(totalReceber)} icon="arrowDown" color="#16a34a" sub={`${filtrados.filter(l => l.tipo === 'entrada' && !l.pago).length} pendentes`} />
-        <KPI label="A Pagar" value={formatBRL(totalPagar)} icon="arrowUp" color="#dc2626" sub={`${filtrados.filter(l => l.tipo === 'saida' && !l.pago).length} pendentes`} />
-        <KPI label="Recebido" value={formatBRL(totalRecebido)} icon="check" color="#16a34a" sub={`${filtrados.filter(l => l.tipo === 'entrada' && l.pago).length} quitados`} />
-        <KPI label="Pago" value={formatBRL(totalPago)} icon="check" color="var(--c-primary)" sub={`${filtrados.filter(l => l.tipo === 'saida' && l.pago).length} quitados`} />
+        <KPI label="A Receber" value={formatBRL(totalReceber)} icon="arrowDown" color="#16a34a" sub={`${filtrados.filter(l => l.tipo === 'entrada' && !l.pago).length} lançamentos`} />
+        <KPI label="A Pagar" value={formatBRL(totalPagar)} icon="arrowUp" color="#dc2626" sub={`${filtrados.filter(l => l.tipo === 'saida' && !l.pago).length} lançamentos`} />
+        <KPI label="Recebido" value={formatBRL(totalRecebido)} icon="check" color="#16a34a" sub={`${filtrados.filter(l => l.tipo === 'entrada' && (l.pago || l.totalPago > 0)).length} lançamentos`} />
+        <KPI label="Pago" value={formatBRL(totalPago)} icon="check" color="var(--c-primary)" sub={`${filtrados.filter(l => l.tipo === 'saida' && (l.pago || l.totalPago > 0)).length} lançamentos`} />
       </div>
 
       {/* Rápido Cadastro de Lançamento */}
@@ -365,6 +365,7 @@ function ContasTab({ empresa, lancamentos, portadores, centrosCusto, formasPagam
             <CustomSelect value={filtros.status} onChange={e => setFiltros({ ...filtros, status: e.target.value })} options={[
               { value: "todos", label: "Todos" },
               { value: "pago", label: "Pago" },
+              { value: "parcial", label: "Parcial" },
               { value: "em-dia", label: "Em dia" },
               { value: "vencendo", label: "Vencendo" },
               { value: "vencido", label: "Vencido" }
@@ -450,13 +451,18 @@ function ContasTab({ empresa, lancamentos, portadores, centrosCusto, formasPagam
                     </td>
                     <td style={{ ...td, color: 'var(--c-text-muted)' }}>{l.formaPagamento}</td>
                     <td style={{ ...td, textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: l.tipo === 'entrada' ? '#16a34a' : 'var(--c-text)' }}>
-                      {l.tipo === 'saida' && '-'}{formatBRL(l.valor)}
+                      <div>{l.tipo === 'saida' && '-'}{formatBRL(l.valor)}</div>
+                      {l.statusPg === 'parcial' && (
+                        <div style={{ fontSize: 10, color: 'var(--c-text-muted)', fontWeight: 400, marginTop: 2 }}>
+                          Falta: {formatBRL(l.saldoRestante)} (pago {formatBRL(l.totalPago)})
+                        </div>
+                      )}
                     </td>
                     <td style={td}><Badge status={s} /></td>
                     <td style={{ ...td, textAlign: 'right' }}>
                       <div style={{ display: 'inline-flex', gap: 4 }}>
-                        {!l.pago && <Btn size="sm" variant="success" icon="check" onClick={() => setPgto(l)}>Pagar</Btn>}
-                        {l.pago && <Btn size="sm" variant="secondary" icon="receipt" onClick={() => setComprovante(l)}>Comprovante</Btn>}
+                        {(!l.pago || l.statusPg === 'parcial') && <Btn size="sm" variant="success" icon="check" onClick={() => setPgto(l)}>Pagar</Btn>}
+                        {(l.pago || l.statusPg === 'parcial') && <Btn size="sm" variant="secondary" icon="receipt" onClick={() => setComprovante(l)}>Comprovante</Btn>}
                         <button onClick={() => setNovoLanc(l)} style={iconBtn} title="Editar"><Icon name="edit" size={14} /></button>
                         <button onClick={() => {
                           if (confirm('Excluir este lançamento?')) {
@@ -777,8 +783,10 @@ function LancamentoFormModal({ lanc, portadores, centrosCusto, formasPagamento, 
 // ----- Pagamento -----
 function PagamentoModal({ lanc, portadores, centrosCusto, onClose, onConfirm }) {
   const isMobile = useIsMobile();
+  const saldoRestante = lanc.saldoRestante !== undefined ? lanc.saldoRestante : lanc.valor;
   const [data, setData] = useState_W(todayISO());
   const [portadorId, setPortadorId] = useState_W(lanc.portadorId);
+  const [valorPago, setValorPago] = useState_W(saldoRestante.toString());
   const portMap = Object.fromEntries(portadores.map(p => [p.id, p]));
   const isEntrada = lanc.tipo === 'entrada';
   const toast = useToast();
@@ -790,7 +798,16 @@ function PagamentoModal({ lanc, portadores, centrosCusto, onClose, onConfirm }) 
     const errPortador = Validacao.required(portadorId, 'Portador');
     if (errPortador) return toast.push(errPortador, 'error');
 
-    onConfirm({ data, portadorId, comprovante: `CMP-${Math.floor(Math.random() * 90000 + 10000)}.pdf` });
+    const val = parseFloat(valorPago.replace(',', '.'));
+    if (isNaN(val) || val <= 0) return toast.push('O valor pago deve ser maior que zero', 'error');
+    if (val > saldoRestante) return toast.push('O valor pago não pode ser maior que o saldo restante (' + formatBRL(saldoRestante) + ')', 'error');
+
+    onConfirm({ 
+      data, 
+      portadorId, 
+      valor: val,
+      comprovante: `CMP-${Math.floor(Math.random() * 90000 + 10000)}.pdf` 
+    });
   }
 
   return (
@@ -801,13 +818,35 @@ function PagamentoModal({ lanc, portadores, centrosCusto, onClose, onConfirm }) 
           Confirmar {isEntrada ? 'Recebimento' : 'Pagamento'}
         </Btn>
       </>}>
-      <div style={{ background: 'var(--c-bg)', borderRadius: 10, padding: 14, marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      
+      {lanc.pagamentosParciais && lanc.pagamentosParciais.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Histórico de pagamentos parciais</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 110, overflowY: 'auto', padding: '10px 12px', background: 'var(--c-bg)', borderRadius: 8, border: '1px solid var(--c-border)' }}>
+            {lanc.pagamentosParciais.map((p, idx) => (
+              <div key={p.id || idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--c-text-muted)' }}>
+                <span>{idx + 1}º Pagamento ({formatDate(p.data)}) - {portMap[p.portadorId]?.nome || 'Portador'}</span>
+                <span style={{ fontWeight: 600, color: 'var(--c-text)' }}>{formatBRL(p.valor)}</span>
+              </div>
+            ))}
+            <div style={{ borderTop: '1px solid var(--c-border)', paddingTop: 6, marginTop: 4, display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 600 }}>
+              <span>Total Pago</span>
+              <span>{formatBRL(lanc.totalPago)}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div style={{ background: 'var(--c-bg)', borderRadius: 10, padding: 14, marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid var(--c-border)' }}>
         <div>
           <div style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>{isEntrada ? 'Receber de' : 'Pagar para'}</div>
           <div style={{ fontWeight: 600 }}>{lanc.descricao}</div>
           <div style={{ fontSize: 12, color: 'var(--c-text-muted)', marginTop: 2 }}>Vence em {formatDate(lanc.vencimento)} · {lanc.formaPagamento}</div>
         </div>
-        <div style={{ fontSize: 22, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: isEntrada ? '#16a34a' : '#dc2626' }}>{formatBRL(lanc.valor)}</div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: 20, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: isEntrada ? '#16a34a' : '#dc2626' }}>{formatBRL(saldoRestante)}</div>
+          {lanc.pagamentosParciais && lanc.pagamentosParciais.length > 0 && <div style={{ fontSize: 11, color: 'var(--c-text-muted)' }}>Valor original: {formatBRL(lanc.valor)}</div>}
+        </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
         <Field label={isEntrada ? 'Data do recebimento' : 'Data do pagamento'} required>
@@ -818,10 +857,16 @@ function PagamentoModal({ lanc, portadores, centrosCusto, onClose, onConfirm }) 
             ...portadores.map(p => ({ value: p.id, label: p.nome }))
           ]} />
         </Field>
+        <Field label="Valor pago (R$)" required span={2}>
+          <Input type="number" min="0" step="0.01" value={valorPago} onChange={e => setValorPago(e.target.value)} placeholder="0,00" />
+          <div style={{ fontSize: 11, color: 'var(--c-text-muted)', marginTop: 4 }}>
+            Informe um valor menor para registrar um **pagamento parcial**.
+          </div>
+        </Field>
       </div>
       <div style={{ marginTop: 16, padding: 12, background: 'var(--c-blue-bg)', border: '1px solid rgba(37, 99, 235, 0.3)', borderRadius: 8, fontSize: 12, color: 'var(--c-blue-fg)', display: 'flex', gap: 8 }}>
         <Icon name="receipt" size={16} />
-        Um comprovante será gerado automaticamente e o saldo do {portMap[portadorId]?.nome} será atualizado.
+        Um comprovante será gerado automaticamente e o saldo da conta será atualizado.
       </div>
     </Modal>
   );
@@ -830,22 +875,49 @@ function PagamentoModal({ lanc, portadores, centrosCusto, onClose, onConfirm }) 
 // ----- Comprovante -----
 function ComprovanteModal({ lanc, empresa, portador, centro, onClose }) {
   const handlePrint = () => {
+    let pgsHtml = '';
+    if (lanc.pagamentosParciais && lanc.pagamentosParciais.length > 0) {
+      pgsHtml = `
+        <div class="row" style="margin-top: 10px; font-weight: bold; border-top: 1px solid #e2e8f0; padding-top: 10px;">
+          <span class="label">PAGAMENTOS PARCIAIS</span>
+        </div>
+        ${lanc.pagamentosParciais.map((p, idx) => `
+          <div class="row" style="font-size: 12px; color: #64748b;">
+            <span class="label">${idx + 1}º Pagto (${formatDate(p.data)})</span>
+            <span class="val">${formatBRL(p.valor)}</span>
+          </div>
+        `).join('')}
+        <div class="row" style="font-weight: bold; border-top: 1px dashed #e2e8f0; padding-top: 5px; margin-top: 5px;">
+          <span class="label">Total Pago</span>
+          <span class="val">${formatBRL(lanc.totalPago)}</span>
+        </div>
+        ${lanc.statusPg === 'parcial' ? `
+          <div class="row" style="font-weight: bold; color: #dc2626;">
+            <span class="label">Saldo Restante</span>
+            <span class="val">${formatBRL(lanc.saldoRestante)}</span>
+          </div>
+        ` : ''}
+      `;
+    }
+
     const html = `
       <div class="comprovante-wrapper">
         <div class="header">
           <div class="title">COMPROVANTE DE ${lanc.tipo === 'entrada' ? 'RECEBIMENTO' : 'PAGAMENTO'}</div>
-          <div class="value">${formatBRL(lanc.valor)}</div>
+          <div class="value">${formatBRL(lanc.statusPg === 'parcial' ? lanc.totalPago : lanc.valor)}</div>
         </div>
         <div class="row"><span class="label">Empresa</span><span class="val">${empresa.nome}</span></div>
-        <div class="row"><span class="label">CNPJ</span><span class="val">${empresa.cnpj}</span></div>
+        <div class="row"><span class="label">CNPJ</span><span class="val">${empresa.cnpj || '—'}</span></div>
         <div class="row"><span class="label">Descrição</span><span class="val">${lanc.descricao}</span></div>
+        <div class="row"><span class="label">Valor Original</span><span class="val">${formatBRL(lanc.valor)}</span></div>
         <div class="row"><span class="label">Centro de Custo</span><span class="val">${centro?.nome || ''}</span></div>
         <div class="row"><span class="label">Portador</span><span class="val">${portador?.nome || ''}</span></div>
         <div class="row"><span class="label">Forma de Pagamento</span><span class="val">${lanc.formaPagamento || ''}</span></div>
         <div class="row"><span class="label">Vencimento</span><span class="val">${formatDate(lanc.vencimento)}</span></div>
-        ${lanc.pagamento ? `<div class="row"><span class="label">Data do Pagamento</span><span class="val">${formatDate(lanc.pagamento.data)}</span></div>` : ''}
+        ${lanc.pagamento ? `<div class="row"><span class="label">Data de Quitação</span><span class="val">${formatDate(lanc.pagamento.data)}</span></div>` : ''}
         <div class="row"><span class="label">Competência</span><span class="val">${lanc.competencia || ''}</span></div>
         ${lanc.pagamento?.comprovante ? `<div class="row"><span class="label">Nº Comprovante</span><span class="val mono">${lanc.pagamento.comprovante}</span></div>` : ''}
+        ${pgsHtml}
       </div>
     `;
     imprimirPDF(html, 'Comprovante - ' + lanc.descricao);
@@ -860,19 +932,44 @@ function ComprovanteModal({ lanc, empresa, portador, centro, onClose }) {
             <Icon name="check" size={24} />
           </div>
           <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: '0.08em', color: 'var(--c-text-muted)', textTransform: 'uppercase' }}>COMPROVANTE DE {lanc.tipo === 'entrada' ? 'RECEBIMENTO' : 'PAGAMENTO'}</div>
-          <div style={{ fontSize: 28, fontWeight: 700, marginTop: 8, fontVariantNumeric: 'tabular-nums' }}>{formatBRL(lanc.valor)}</div>
+          <div style={{ fontSize: 28, fontWeight: 700, marginTop: 8, fontVariantNumeric: 'tabular-nums' }}>{formatBRL(lanc.statusPg === 'parcial' ? lanc.totalPago : lanc.valor)}</div>
         </div>
         <div style={{ borderTop: '1px solid var(--c-border)', paddingTop: 16, display: 'grid', gap: 10, fontSize: 13 }}>
           <Row k="Empresa" v={empresa.nome} />
-          <Row k="CNPJ" v={empresa.cnpj} />
+          <Row k="CNPJ" v={empresa.cnpj || '—'} />
           <Row k="Descrição" v={lanc.descricao} />
+          <Row k="Valor Original" v={formatBRL(lanc.valor)} />
           <Row k="Centro de Custo" v={centro?.nome} />
           <Row k="Portador" v={portador?.nome} />
           <Row k="Forma de Pagamento" v={lanc.formaPagamento} />
           <Row k="Vencimento" v={formatDate(lanc.vencimento)} />
-          <Row k="Data do Pagamento" v={lanc.pagamento && formatDate(lanc.pagamento.data)} />
+          {lanc.pagamento && <Row k="Data de Quitação" v={formatDate(lanc.pagamento.data)} />}
           <Row k="Competência" v={lanc.competencia} />
-          <Row k="Nº Comprovante" v={lanc.pagamento?.comprovante} mono />
+          {lanc.pagamento?.comprovante && <Row k="Nº Comprovante" v={lanc.pagamento.comprovante} mono />}
+
+          {lanc.pagamentosParciais && lanc.pagamentosParciais.length > 0 && (
+            <div style={{ marginTop: 10, borderTop: '1px solid var(--c-border)', paddingTop: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>Histórico de Parcelas Pagas</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {lanc.pagamentosParciais.map((p, idx) => (
+                  <div key={p.id || idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--c-text-muted)' }}>
+                    <span>{idx + 1}º Pagto ({formatDate(p.data)})</span>
+                    <span>{formatBRL(p.valor)}</span>
+                  </div>
+                ))}
+                <div style={{ borderTop: '1px dashed var(--c-border)', paddingTop: 6, display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 600 }}>
+                  <span>Total Pago</span>
+                  <span>{formatBRL(lanc.totalPago)}</span>
+                </div>
+                {lanc.statusPg === 'parcial' && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 600, color: '#dc2626' }}>
+                    <span>Saldo Restante</span>
+                    <span>{formatBRL(lanc.saldoRestante)}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </Modal>

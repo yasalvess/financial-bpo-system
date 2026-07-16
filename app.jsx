@@ -55,7 +55,15 @@ function App() {
 
   async function carregarPerfil(userId) {
     const { data } = await supabaseClient.from('perfis').select('*').eq('id', userId).single();
-    if (data) setPerfil({ ...data, foto: data.foto_url, inicial: data.nome?.charAt(0) });
+    if (data) {
+      if (data.ativo === false) {
+        toast.push('Sua conta foi desativada pelo administrador.', 'error');
+        await window.supabaseClient.auth.signOut();
+        setPerfil(null);
+        return;
+      }
+      setPerfil({ ...data, foto: data.foto_url, inicial: data.nome?.charAt(0) });
+    }
   }
 
   useEffect_A(() => {
@@ -294,16 +302,19 @@ function App() {
 
   async function deleteEmpresa(id) {
     const { error } = await window.supabaseClient.from('empresas')
-      .update({ ativo: false })
+      .delete()
       .eq('id', id);
     
-    if (error) { toast.push('Erro ao excluir empresa', 'error'); return; }
+    if (error) { 
+      toast.push('Erro ao excluir empresa: ' + (error.message || 'Verifique se existem chaves estrangeiras pendentes.'), 'error'); 
+      return; 
+    }
     setData(d => {
       const novo = { ...d.lancamentos }; delete novo[id];
       return { ...d, empresas: d.empresas.filter(e => e.id !== id), lancamentos: novo };
     });
     if (route.view === 'empresa' && route.id === id) setRoute({ view: 'central' });
-    toast.push('Empresa removida');
+    toast.push('Empresa excluída com sucesso!');
   }
 
   async function upsertLanc(l) {
@@ -396,28 +407,51 @@ function App() {
   }
 
   async function payLanc(empId, lancId, payload) {
-    const { data: updated, error } = await window.supabaseClient.from('lancamentos')
-      .update({
-        pago: true,
+    const lanc = (data.lancamentos[empId] || []).find(x => x.id === lancId);
+    if (!lanc) return;
+
+    const valorPago = parseFloat(payload.valor);
+    const saldoAnterior = lanc.saldoRestante !== undefined ? lanc.saldoRestante : lanc.valor;
+    const quitado = valorPago >= saldoAnterior;
+
+    // 1. Inserir o registro de pagamento parcial
+    const { data: pgData, error: pgError } = await window.supabaseClient.from('pagamentos_parciais')
+      .insert({
+        user_id: session.user.id,
+        lancamento_id: lancId,
+        valor: valorPago,
+        data: payload.data,
         portador_id: payload.portadorId,
-        pagamento_data: payload.data,
-        pagamento_comprovante: payload.comprovante || `CMP-${Date.now()}.pdf`,
-        updated_at: new Date().toISOString()
+        comprovante: payload.comprovante || `CMP-${Math.floor(Math.random() * 90000 + 10000)}.pdf`
       })
-      .eq('id', lancId)
       .select().single();
-    
-    if (error) { toast.push('Erro ao registrar pagamento', 'error'); return; }
-    
-    setData(d => ({
-      ...d,
-      lancamentos: {
-        ...d.lancamentos,
-        [empId]: (d.lancamentos[empId] || []).map(x => x.id === lancId
-          ? { ...x, pago: true, portadorId: payload.portadorId, pagamento: { data: payload.data, comprovante: payload.comprovante } }
-          : x)
+
+    if (pgError) {
+      toast.push('Erro ao registrar pagamento parcial: ' + pgError.message, 'error');
+      return;
+    }
+
+    // 2. Se quitou, atualiza o lançamento principal
+    if (quitado) {
+      const { error: errorLanc } = await window.supabaseClient.from('lancamentos')
+        .update({
+          pago: true,
+          portador_id: payload.portadorId,
+          pagamento_data: payload.data,
+          pagamento_comprovante: payload.comprovante || pgData.comprovante,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', lancId);
+
+      if (errorLanc) {
+        toast.push('Erro ao quitar lançamento: ' + errorLanc.message, 'error');
+        await window.supabaseClient.from('pagamentos_parciais').delete().eq('id', pgData.id);
+        return;
       }
-    }));
+    }
+
+    // 3. Recarrega os dados para recalcular tudo com os novos valores
+    await recarregar();
   }
 
   const currentEmpresa = route.view === 'empresa' ? data.empresas.find(e => e.id === route.id) : null;
@@ -584,8 +618,8 @@ function App() {
           open={true}
           titulo="Excluir Empresa"
           mensagem={`Tem certeza que deseja excluir "${confirmDeleteEmp.nome}"? Todos os lançamentos serão removidos.`}
-          onConfirmar={() => {
-            deleteEmpresa(confirmDeleteEmp.id);
+          onConfirmar={async () => {
+            await deleteEmpresa(confirmDeleteEmp.id);
             setEditEmp(null);
             setConfirmDeleteEmp(null);
           }}

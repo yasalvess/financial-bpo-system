@@ -71,6 +71,47 @@ serve(async (req) => {
       });
     }
 
+    if (action === 'update') {
+      const { id, nome, email, cargo, empresasIds, ativo } = body;
+      if (!id) throw new Error('ID do usuário é obrigatório para atualização');
+
+      // 1. Atualizar o usuário no Auth
+      const updateData: any = {};
+      if (email) updateData.email = email;
+      if (nome) updateData.user_metadata = { nome };
+      
+      const { error: authUpdateError } = await supabaseAdmin.auth.admin.updateUserById(id, updateData);
+      if (authUpdateError) throw authUpdateError;
+
+      // 2. Atualizar perfil na tabela public.perfis
+      const { error: perfilError } = await supabaseAdmin.from('perfis').update({
+        nome: nome,
+        email: email,
+        cargo: cargo,
+        ativo: ativo
+      }).eq('id', id);
+      if (perfilError) throw perfilError;
+
+      // 3. Atualizar vinculações de empresas (deletar antigas e inserir novas)
+      const { error: delVincError } = await supabaseAdmin.from('usuarios_empresas').delete().eq('user_id', id);
+      if (delVincError) throw delVincError;
+
+      if (empresasIds && empresasIds.length > 0) {
+        for (const empId of empresasIds) {
+          const { error: vincError } = await supabaseAdmin.from('usuarios_empresas').insert({
+            user_id: id,
+            empresa_id: empId
+          });
+          if (vincError) throw vincError;
+        }
+      }
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200,
+      });
+    }
+
     // Ação Padrão: Criar Usuário
     const { email, password, nome, cargo, empresasIds } = body;
 

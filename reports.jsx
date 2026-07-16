@@ -234,6 +234,7 @@ function LancamentosGlobais({ data, onOpenEmpresa, onUpsertLanc, onGoCentral }) 
           <Field label="Status" style={{ flex: isMobile ? '1 1 calc(50% - 4px)' : '1 1 0' }}><CustomSelect value={filtros.status} onChange={e => setFiltros({ ...filtros, status: e.target.value })} options={[
             { value: "todos", label: "Todos" },
             { value: "pago", label: "Pago" },
+            { value: "parcial", label: "Parcial" },
             { value: "em-dia", label: "Em dia" },
             { value: "vencendo", label: "Vencendo" },
             { value: "vencido", label: "Vencido" }
@@ -294,7 +295,12 @@ function LancamentosGlobais({ data, onOpenEmpresa, onUpsertLanc, onGoCentral }) 
                       </span>
                     </td>
                     <td style={{ ...td, textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: l.tipo === 'entrada' ? '#16a34a' : 'var(--c-text)' }}>
-                      {l.tipo === 'saida' && '-'}{formatBRL(l.valor)}
+                      <div>{l.tipo === 'saida' && '-'}{formatBRL(l.valor)}</div>
+                      {l.statusPg === 'parcial' && (
+                        <div style={{ fontSize: 10, color: 'var(--c-text-muted)', fontWeight: 400, marginTop: 2 }}>
+                          Falta: {formatBRL(l.saldoRestante)} (pago {formatBRL(l.totalPago)})
+                        </div>
+                      )}
                     </td>
                     <td style={td}><Badge status={s} /></td>
                   </tr>
@@ -480,8 +486,8 @@ function RelatoriosConsolidados({ data }) {
   // Fluxo de caixa projetado (lançamentos não pagos por competência)
   const fluxoProjetado = useMemo_L(() => meses.map(m => {
     const naoPagos = lancs.filter(l => l.competencia === m.comp && !l.pago);
-    const aReceber = naoPagos.filter(l => l.tipo === 'entrada').reduce((s, l) => s + l.valor, 0);
-    const aPagar = naoPagos.filter(l => l.tipo === 'saida').reduce((s, l) => s + l.valor, 0);
+    const aReceber = naoPagos.filter(l => l.tipo === 'entrada').reduce((s, l) => s + (l.saldoRestante !== undefined ? l.saldoRestante : l.valor), 0);
+    const aPagar = naoPagos.filter(l => l.tipo === 'saida').reduce((s, l) => s + (l.saldoRestante !== undefined ? l.saldoRestante : l.valor), 0);
     return { label: m.label, aReceber, aPagar, saldo: aReceber - aPagar };
   }), [meses, lancs]);
   const totProjReceber = fluxoProjetado.reduce((s, m) => s + m.aReceber, 0);
@@ -502,13 +508,13 @@ function RelatoriosConsolidados({ data }) {
 
   // Inadimplência: lançamentos vencidos (não pagos)
   const vencidos = useMemo_L(() => lancs
-    .filter(l => !l.pago && lancStatus(l, hoje) === 'vencido')
+    .filter(l => !l.pago && l.statusPg !== 'pago' && lancStatus(l, hoje) === 'vencido')
     .map(l => ({ ...l, diasAtraso: daysBetween(l.vencimento, hoje) }))
     .sort((a, b) => b.diasAtraso - a.diasAtraso), [lancs, hoje]);
-  const totalVencido = vencidos.reduce((s, l) => s + l.valor, 0);
+  const totalVencido = vencidos.reduce((s, l) => s + (l.saldoRestante !== undefined ? l.saldoRestante : l.valor), 0);
   const empresaMaisInadimplente = useMemo_L(() => {
     const agg = {};
-    vencidos.forEach(l => { agg[l.empresaNome] = (agg[l.empresaNome] || 0) + l.valor; });
+    vencidos.forEach(l => { agg[l.empresaNome] = (agg[l.empresaNome] || 0) + (l.saldoRestante !== undefined ? l.saldoRestante : l.valor); });
     const top = Object.entries(agg).sort((a, b) => b[1] - a[1])[0];
     return top ? { nome: top[0], valor: top[1] } : null;
   }, [vencidos]);
