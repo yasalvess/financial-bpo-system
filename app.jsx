@@ -301,20 +301,27 @@ function App() {
   }
 
   async function deleteEmpresa(id) {
-    const { error } = await window.supabaseClient.from('empresas')
-      .delete()
-      .eq('id', id);
-    
-    if (error) { 
-      toast.push('Erro ao excluir empresa: ' + (error.message || 'Verifique se existem chaves estrangeiras pendentes.'), 'error'); 
-      return; 
+    if (!session?.access_token) return;
+    try {
+      const response = await fetch('https://svgvtmkqjvxsoduohfuy.supabase.co/functions/v1/admin-criar-usuario', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ action: 'delete_empresa', id })
+      });
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => ({}));
+        toast.push('Erro ao excluir empresa: ' + (errJson.error || 'Verifique permissões e pendências.'), 'error');
+        return;
+      }
+      setData(d => {
+        const novo = { ...d.lancamentos }; delete novo[id];
+        return { ...d, empresas: d.empresas.filter(e => e.id !== id), lancamentos: novo };
+      });
+      if (route.view === 'empresa' && route.id === id) setRoute({ view: 'central' });
+      toast.push('Empresa excluída com sucesso!');
+    } catch (err) {
+      toast.push('Erro de conexão ao excluir.', 'error');
     }
-    setData(d => {
-      const novo = { ...d.lancamentos }; delete novo[id];
-      return { ...d, empresas: d.empresas.filter(e => e.id !== id), lancamentos: novo };
-    });
-    if (route.view === 'empresa' && route.id === id) setRoute({ view: 'central' });
-    toast.push('Empresa excluída com sucesso!');
   }
 
   async function upsertLanc(l) {

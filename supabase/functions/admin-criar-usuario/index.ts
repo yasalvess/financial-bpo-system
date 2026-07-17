@@ -36,6 +36,32 @@ serve(async (req) => {
     const body = await req.json();
     const { action } = body;
 
+    if (action === 'list') {
+      const { data: perfis, error: perfisErr } = await supabaseAdmin.from('perfis').select('*').order('created_at', { ascending: false });
+      if (perfisErr) throw perfisErr;
+      
+      const { data: vinculacoes, error: vincErr } = await supabaseAdmin.from('usuarios_empresas').select('*');
+      if (vincErr) throw vincErr;
+      
+      return new Response(JSON.stringify({ success: true, perfis, vinculacoes }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200,
+      });
+    }
+
+    if (action === 'delete_empresa') {
+      const { id } = body;
+      if (!id) throw new Error('ID da empresa obrigatório para exclusão');
+
+      const { error: delError } = await supabaseAdmin.from('empresas').delete().eq('id', id);
+      if (delError) throw delError;
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200,
+      });
+    }
+
     if (action === 'delete') {
       const { id, isConvite } = body;
       if (!id) throw new Error('ID do usuário é obrigatório para exclusão');

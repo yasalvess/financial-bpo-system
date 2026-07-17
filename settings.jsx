@@ -737,16 +737,28 @@ function InfoLinha({ label, valor }) {
 }
 
 function AbaUsuarios({ session, data }) {
-  const [convites, setConvites] = useState_S([]);
+  const [usuarios, setUsuarios] = useState_S([]);
   const [usuariosEmpresas, setUsuariosEmpresas] = useState_S({});
+  const [loading, setLoading] = useState_S(true);
+  const [actionLoading, setActionLoading] = useState_S(false);
+  const [busca, setBusca] = useState_S('');
+  const [filtroRole, setFiltroRole] = useState_S('todos');
+  const [filtroStatus, setFiltroStatus] = useState_S('todos');
+  const [selecionados, setSelecionados] = useState_S([]);
+  const [editUsuario, setEditUsuario] = useState_S(null);
+  const [viewUsuario, setViewUsuario] = useState_S(null);
+  const [confirmRevogar, setConfirmRevogar] = useState_S(null);
+  const [confirmLote, setConfirmLote] = useState_S(false);
+  const [showCriar, setShowCriar] = useState_S(false);
+  // Criar usuario states
   const [nomeNovo, setNomeNovo] = useState_S('');
   const [emailNovo, setEmailNovo] = useState_S('');
   const [senhaNova, setSenhaNova] = useState_S('');
   const [papelNovo, setPapelNovo] = useState_S('analista');
   const [empresasSelecionadas, setEmpresasSelecionadas] = useState_S([]);
-  const [loading, setLoading] = useState_S(false);
-  const [editUsuario, setEditUsuario] = useState_S(null);
+  const [erros, setErros] = useState_S({});
   const toast = useToast();
+  const isMobile = useIsMobile(768);
 
   const PAPEIS = [
     { value:'admin', label:'Administrador', desc:'Acesso total a todas as empresas' },
@@ -754,74 +766,143 @@ function AbaUsuarios({ session, data }) {
     { value:'visualizador', label:'Visualizador', desc:'Apenas visualiza dados nas empresas liberadas' },
   ];
 
-  useEffect_S(() => { carregarConvites(); }, []);
+  const corPapel = {
+    admin:'#7c3aed', 'Administrador':'#7c3aed', 'Administrador(a)':'#7c3aed',
+    analista:'#3b82f6', 'Analista':'#3b82f6', operador:'#3b82f6',
+    visualizador:'#64748b', 'Visualizador':'#64748b'
+  };
 
-  async function carregarConvites() {
-    const { data: perfis } = await window.supabaseClient.from('perfis')
-      .select('*').eq('owner_id', session.user.id).order('created_at', { ascending: false });
-    
-    const { data: convs } = await window.supabaseClient.from('convites')
-      .select('*').eq('user_id', session.user.id).eq('status', 'pendente').order('created_at', { ascending: false });
+  const PAPEL_LABELS = {
+    admin: 'Administrador', 'Administrador':'Administrador', 'Administrador(a)':'Administrador(a)',
+    operador: 'Analista', analista: 'Analista', 'Analista':'Analista',
+    visualizador: 'Visualizador', 'Visualizador':'Visualizador'
+  };
 
-    const { data: vinculacoes } = await window.supabaseClient.from('usuarios_empresas').select('*');
+  useEffect_S(() => { carregarUsuarios(); }, []);
 
-    const mapVinculacoes = {};
-    if (vinculacoes) {
-      vinculacoes.forEach(v => {
-        if (!mapVinculacoes[v.user_id]) mapVinculacoes[v.user_id] = [];
-        mapVinculacoes[v.user_id].push(v.empresa_id);
-      });
-    }
-    
-    const lista = [];
-    if (perfis) lista.push(...perfis);
-    if (convs) {
-      convs.forEach(c => lista.push({
-        id: c.id, nome: c.nome || c.email_convidado, email: c.email_convidado,
-        cargo: c.papel, status: 'pendente', isConvite: true, empresas_ids: c.empresas_ids
-      }));
-    }
-    setConvites(lista);
-    setUsuariosEmpresas(mapVinculacoes);
-  }
-
-  const [erros, setErros] = useState_S({});
-  const [confirmRevogar, setConfirmRevogar] = useState_S(null); // { id, isConvite }
-
-  async function revogarAcesso(id, isConvite) {
-    setConfirmRevogar({ id, isConvite });
-  }
-
-  async function executarExclusao() {
-    if (!confirmRevogar) return;
+  async function carregarUsuarios() {
     setLoading(true);
     try {
-      const { data: { session: currentSession } } = await window.supabaseClient.auth.getSession();
-      const token = currentSession?.access_token;
+      const token = await getToken();
       const response = await fetch('https://svgvtmkqjvxsoduohfuy.supabase.co/functions/v1/admin-criar-usuario', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          action: 'delete',
-          id: confirmRevogar.id,
-          isConvite: confirmRevogar.isConvite
-        })
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ action: 'list' })
+      });
+      
+      let perfis = [];
+      let vinculacoes = [];
+      
+      if (response.ok) {
+        const result = await response.json();
+        perfis = result.perfis || [];
+        vinculacoes = result.vinculacoes || [];
+        // Filtra fora o próprio usuário atual
+        perfis = perfis.filter(p => p.id !== session.user.id);
+      } else {
+        const errJson = await response.json().catch(() => ({}));
+        console.warn('Erro na listagem:', errJson.error);
+      }
+
+      const { data: convs } = await window.supabaseClient.from('convites')
+        .select('*').eq('user_id', session.user.id).eq('status', 'pendente').order('created_at', { ascending: false });
+
+      const mapVinculacoes = {};
+      if (vinculacoes) {
+        vinculacoes.forEach(v => {
+          if (!mapVinculacoes[v.user_id]) mapVinculacoes[v.user_id] = [];
+          mapVinculacoes[v.user_id].push(v.empresa_id);
+        });
+      }
+
+      const lista = [];
+      if (perfis) lista.push(...perfis.map(p => ({ ...p, isConvite: false })));
+      if (convs) {
+        convs.forEach(c => lista.push({
+          id: c.id, nome: c.nome || c.email_convidado, email: c.email_convidado,
+          cargo: c.papel, status: 'pendente', isConvite: true, empresas_ids: c.empresas_ids,
+          created_at: c.created_at, ativo: true
+        }));
+      }
+      setUsuarios(lista);
+      setUsuariosEmpresas(mapVinculacoes);
+    } catch (err) {
+      toast.push('Erro ao carregar usuários: ' + err.message, 'error');
+    }
+    setLoading(false);
+  }
+
+  async function getToken() {
+    const { data: { session: s } } = await window.supabaseClient.auth.getSession();
+    return s?.access_token;
+  }
+
+  async function executarExclusao(id, isConvite) {
+    setActionLoading(true);
+    try {
+      const token = await getToken();
+      const response = await fetch('https://svgvtmkqjvxsoduohfuy.supabase.co/functions/v1/admin-criar-usuario', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ action: 'delete', id, isConvite })
       });
       if (!response.ok) {
         const errJson = await response.json().catch(() => ({}));
-        throw new Error(errJson.error || 'Erro ao revogar acesso');
+        throw new Error(errJson.error || 'Erro ao excluir usuário');
       }
-      
-      toast.push('Acesso revogado com sucesso!', 'success');
-      setConfirmRevogar(null);
-      carregarConvites();
+      toast.push('Usuário removido com sucesso!', 'success');
+      setSelecionados(prev => prev.filter(s => s !== id));
+      carregarUsuarios();
     } catch (err) {
       toast.push(err.message, 'error');
     }
-    setLoading(false);
+    setActionLoading(false);
+  }
+
+  async function executarExclusaoLote() {
+    setActionLoading(true);
+    let sucesso = 0, falha = 0;
+    for (const id of selecionados) {
+      const u = usuarios.find(u => u.id === id);
+      if (!u) continue;
+      try {
+        const token = await getToken();
+        const response = await fetch('https://svgvtmkqjvxsoduohfuy.supabase.co/functions/v1/admin-criar-usuario', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ action: 'delete', id, isConvite: u.isConvite })
+        });
+        if (response.ok) sucesso++; else falha++;
+      } catch { falha++; }
+    }
+    if (sucesso > 0) toast.push(`${sucesso} usuário(s) removido(s) com sucesso!`, 'success');
+    if (falha > 0) toast.push(`Falha ao remover ${falha} usuário(s).`, 'error');
+    setSelecionados([]);
+    setConfirmLote(false);
+    carregarUsuarios();
+    setActionLoading(false);
+  }
+
+  async function salvarEdicao(payload) {
+    setActionLoading(true);
+    try {
+      const token = await getToken();
+      const response = await fetch('https://svgvtmkqjvxsoduohfuy.supabase.co/functions/v1/admin-criar-usuario', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ action: 'update', ...payload })
+      });
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => ({}));
+        throw new Error(errJson.error || 'Erro ao atualizar usuário');
+      }
+      toast.push('Usuário atualizado com sucesso!', 'success');
+      setEditUsuario(null);
+      carregarUsuarios();
+    } catch (err) {
+      toast.push(err.message, 'error');
+    }
+    setActionLoading(false);
   }
 
   async function criarUsuario() {
@@ -840,22 +921,15 @@ function AbaUsuarios({ session, data }) {
       return;
     }
 
-    if (Object.keys(e).length > 0) {
-      setErros(e);
-      return;
-    }
+    if (Object.keys(e).length > 0) { setErros(e); return; }
     setErros({});
 
-    setLoading(true);
+    setActionLoading(true);
     try {
-      const { data: { session: currentSession } } = await window.supabaseClient.auth.getSession();
-      const token = currentSession?.access_token;
+      const token = await getToken();
       const response = await fetch('https://svgvtmkqjvxsoduohfuy.supabase.co/functions/v1/admin-criar-usuario', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({
           email: emailNovo.toLowerCase().trim(),
           password: senhaNova,
@@ -868,240 +942,546 @@ function AbaUsuarios({ session, data }) {
         const errJson = await response.json().catch(() => ({}));
         throw new Error(errJson.error || 'Erro ao criar usuário');
       }
-      
-      toast.push(`Convite criado com sucesso para ${nomeNovo}!`, 'success');
-      setNomeNovo(''); setEmailNovo(''); setSenhaNova(''); setEmpresasSelecionadas([]);
-      carregarConvites();
+      toast.push(`Usuário ${nomeNovo} criado com sucesso!`, 'success');
+      setNomeNovo(''); setEmailNovo(''); setSenhaNova(''); setEmpresasSelecionadas([]); setShowCriar(false);
+      carregarUsuarios();
     } catch (err) {
       toast.push(err.message, 'error');
     }
-    setLoading(false);
+    setActionLoading(false);
   }
 
-  const corPapel = { admin:'#7c3aed', operador:'var(--c-primary)', analista:'var(--c-primary)', visualizador:'#64748b', 'Administrador(a)':'#7c3aed', 'Analista':'var(--c-primary)', 'Visualizador':'#64748b' };
-  
-  const PAPEL_LABELS = {
-    admin: 'Administrador',
-    operador: 'Analista',
-    analista: 'Analista',
-    visualizador: 'Visualizador'
-  };
+  // --- Filtragem ---
+  const usuariosFiltrados = useMemo_S(() => {
+    return usuarios.filter(u => {
+      const buscaLower = busca.toLowerCase();
+      if (buscaLower && !u.nome?.toLowerCase().includes(buscaLower) && !u.email?.toLowerCase().includes(buscaLower)) return false;
+      if (filtroRole !== 'todos') {
+        const cargoNorm = (u.cargo || '').toLowerCase();
+        if (filtroRole === 'admin' && !cargoNorm.includes('admin')) return false;
+        if (filtroRole === 'analista' && !cargoNorm.includes('analista') && !cargoNorm.includes('operador')) return false;
+        if (filtroRole === 'visualizador' && !cargoNorm.includes('visualizador')) return false;
+      }
+      if (filtroStatus === 'ativo' && u.ativo === false) return false;
+      if (filtroStatus === 'inativo' && u.ativo !== false) return false;
+      if (filtroStatus === 'pendente' && u.status !== 'pendente') return false;
+      return true;
+    });
+  }, [usuarios, busca, filtroRole, filtroStatus]);
+
+  const allSelected = usuariosFiltrados.length > 0 && usuariosFiltrados.every(u => selecionados.includes(u.id));
+
+  function toggleSelectAll() {
+    if (allSelected) {
+      setSelecionados(prev => prev.filter(id => !usuariosFiltrados.find(u => u.id === id)));
+    } else {
+      const ids = usuariosFiltrados.map(u => u.id);
+      setSelecionados(prev => [...new Set([...prev, ...ids])]);
+    }
+  }
+
+  function toggleSelect(id) {
+    setSelecionados(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]);
+  }
+
+  function getNomeEmpresas(u) {
+    const vinculadas = u.isConvite ? (u.empresas_ids || []) : (usuariosEmpresas[u.id] || []);
+    return data.empresas.filter(e => vinculadas.includes(e.id)).map(e => e.nome);
+  }
+
+  function getCargoNormalizado(cargo) {
+    const c = (cargo || '').toLowerCase();
+    if (c.includes('admin')) return 'admin';
+    if (c.includes('analista') || c.includes('operador')) return 'analista';
+    if (c.includes('visualizador')) return 'visualizador';
+    return c;
+  }
+
+  // --- Rendering ---
+  const checkboxStyle = (checked) => ({
+    width: 18, height: 18, borderRadius: 4, flexShrink: 0, cursor: 'pointer',
+    border: `1.5px solid ${checked ? 'var(--c-primary)' : 'var(--c-border)'}`,
+    background: checked ? 'var(--c-primary)' : 'transparent',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    transition: 'all 0.15s ease'
+  });
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', gap:24 }}>
-      <AbaHeader titulo="Usuários e Acessos" descricao="Gerencie quem tem acesso ao sistema." />
+    <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+      <AbaHeader titulo="Usuários e Acessos" descricao="Gerencie todos os usuários do sistema, seus cargos, empresas e status." />
 
-      <SecaoConfig titulo="Criar novo usuário" descricao="Crie uma conta para um funcionário ou cliente e libere acesso a empresas específicas.">
-        <div style={{ display:'flex', flexDirection:'column', gap:14, maxWidth:600 }}>
-          <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-            <Field label="Nome Completo" style={{ flex:1, minWidth:200 }} erro={erros.nome}>
-              <Input value={nomeNovo} onChange={e => setNomeNovo(e.target.value)} placeholder="João Silva" style={{ borderColor: erros.nome ? '#dc2626' : undefined }} />
-              {erros.nome && <span style={{ fontSize:11, color:'#dc2626', marginTop:2 }}>{erros.nome}</span>}
-            </Field>
-            <Field label="E-mail" style={{ flex:1, minWidth:200 }} erro={erros.email}>
-              <Input type="email" value={emailNovo} onChange={e => setEmailNovo(e.target.value)} placeholder="joao@empresa.com" style={{ borderColor: erros.email ? '#dc2626' : undefined }} />
-              {erros.email && <span style={{ fontSize:11, color:'#dc2626', marginTop:2 }}>{erros.email}</span>}
-            </Field>
+      {/* --- Toolbar superior --- */}
+      <div style={{
+        display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center',
+        padding: '12px 16px', background: 'var(--c-surface)', borderRadius: 12,
+        border: '1px solid var(--c-border)'
+      }}>
+        {/* Search */}
+        <div style={{ flex: '1 1 220px', minWidth: 180, position: 'relative' }}>
+          <Icon name="search" size={15} color="var(--c-text-muted)" />
+          <input
+            type="text" value={busca} onChange={e => setBusca(e.target.value)}
+            placeholder="Buscar por nome ou e-mail..."
+            style={{
+              width: '100%', padding: '8px 10px 8px 28px', border: '1.5px solid var(--c-border)',
+              borderRadius: 8, fontSize: 13, background: 'var(--c-bg)', color: 'var(--c-text)',
+              fontFamily: 'inherit', outline: 'none', position: 'relative'
+            }}
+          />
+          <div style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
           </div>
-          
-          <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-            <Field label="Senha Temporária" style={{ flex:1, minWidth:200 }} erro={erros.senha}>
-              <Input type="text" value={senhaNova} onChange={e => setSenhaNova(e.target.value)} placeholder="Defina uma senha" style={{ borderColor: erros.senha ? '#dc2626' : undefined }} />
-              {erros.senha && <span style={{ fontSize:11, color:'#dc2626', marginTop:2 }}>{erros.senha}</span>}
-            </Field>
-            <Field label="Cargo / Papel" style={{ flex:1, minWidth:200 }}>
-              <CustomSelect value={papelNovo} onChange={e => {
-                setPapelNovo(e.target.value);
-                if(e.target.value==='admin') setEmpresasSelecionadas(data.empresas.map(em=>em.id));
-              }} options={PAPEIS.map(p=>({value:p.value, label:p.label}))} />
-            </Field>
-          </div>
+        </div>
 
-          {papelNovo !== 'admin' && (
-            <div style={{ marginTop: 14 }}>
-              <div style={{
-                fontSize: 12, fontWeight: 700, color: 'var(--c-text-muted)',
-                textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8
-              }}>
-                Empresas com acesso
+        {/* Filter: Cargo */}
+        <CustomSelect value={filtroRole} onChange={e => setFiltroRole(e.target.value)} options={[
+          { value: 'todos', label: 'Todos os cargos' },
+          { value: 'admin', label: 'Administrador' },
+          { value: 'analista', label: 'Analista' },
+          { value: 'visualizador', label: 'Visualizador' }
+        ]} style={{ minWidth: 150 }} />
+
+        {/* Filter: Status */}
+        <CustomSelect value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)} options={[
+          { value: 'todos', label: 'Todos os status' },
+          { value: 'ativo', label: 'Ativo' },
+          { value: 'inativo', label: 'Inativo' },
+          { value: 'pendente', label: 'Pendente' }
+        ]} style={{ minWidth: 140 }} />
+
+        <div style={{ flex: '0 0 auto', display: 'flex', gap: 8 }}>
+          {/* Batch delete */}
+          {selecionados.length > 0 && (
+            <Btn onClick={() => setConfirmLote(true)} style={{ background:'#dc2626', color:'#fff', border:'1px solid #dc2626', fontSize: 12, padding: '7px 14px' }}>
+              <Icon name="trash" size={14} color="#fff" /> Excluir ({selecionados.length})
+            </Btn>
+          )}
+          {/* Criar button */}
+          <Btn variant="primary" onClick={() => setShowCriar(true)} style={{ fontSize: 12, padding: '7px 14px' }}>
+            <Icon name="plus" size={14} /> Novo Usuário
+          </Btn>
+        </div>
+      </div>
+
+      {/* --- Summary cards --- */}
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: 10 }}>
+        {[
+          { label: 'Total', value: usuarios.length, color: 'var(--c-primary)', icon: 'users' },
+          { label: 'Ativos', value: usuarios.filter(u => u.ativo !== false && u.status !== 'pendente').length, color: '#16a34a', icon: 'check' },
+          { label: 'Inativos', value: usuarios.filter(u => u.ativo === false).length, color: '#dc2626', icon: 'x' },
+          { label: 'Pendentes', value: usuarios.filter(u => u.status === 'pendente').length, color: '#f59e0b', icon: 'alert' }
+        ].map((card, i) => (
+          <div key={i} style={{
+            padding: '14px 16px', borderRadius: 12, background: 'var(--c-surface)',
+            border: '1px solid var(--c-border)', display: 'flex', alignItems: 'center', gap: 12
+          }}>
+            <div style={{
+              width: 36, height: 36, borderRadius: 10, background: card.color + '15',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+            }}>
+              <Icon name={card.icon} size={18} color={card.color} />
+            </div>
+            <div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--c-text)', lineHeight: 1 }}>{card.value}</div>
+              <div style={{ fontSize: 11, color: 'var(--c-text-muted)', marginTop: 2 }}>{card.label}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* --- Tabela de usuários --- */}
+      {loading ? (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
+          <LoadingSpinner size={32} />
+        </div>
+      ) : usuariosFiltrados.length === 0 ? (
+        <EmptyState
+          icon="users"
+          title={busca || filtroRole !== 'todos' || filtroStatus !== 'todos' ? 'Nenhum usuário encontrado' : 'Nenhum usuário cadastrado'}
+          hint={busca || filtroRole !== 'todos' || filtroStatus !== 'todos'
+            ? 'Tente alterar os filtros ou a busca.'
+            : 'Clique em "Novo Usuário" para criar o primeiro.'}
+        />
+      ) : (
+        <div style={{ borderRadius: 12, border: '1px solid var(--c-border)', overflow: 'hidden', background: 'var(--c-surface)' }}>
+          {/* Cabeçalho da tabela (só desktop) */}
+          {!isMobile && (
+            <div style={{
+              display: 'grid', gridTemplateColumns: '40px 1.5fr 1.8fr 1fr 0.8fr 140px',
+              padding: '10px 16px', background: 'var(--c-bg)', borderBottom: '1px solid var(--c-border)',
+              fontSize: 11, fontWeight: 700, color: 'var(--c-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <div onClick={toggleSelectAll} style={checkboxStyle(allSelected)}>
+                  {allSelected && <Icon name="check" size={11} color="#fff" strokeWidth={3} />}
+                </div>
               </div>
-              <div style={{
-                border: '1.5px solid var(--c-border)', borderRadius: 10,
-                overflow: 'hidden', background: 'var(--c-surface)'
-              }}>
-                {data.empresas?.length === 0 ? (
-                  <div style={{ padding: '14px 16px', fontSize: 13,
-                    color: 'var(--c-text-muted)', textAlign: 'center' }}>
-                    Nenhuma empresa cadastrada
-                  </div>
-                ) : (data.empresas || []).map((emp, i) => {
-                  const selecionada = empresasSelecionadas.includes(emp.id)
-                  const ic = window.stringToColor(emp.nome)
-                  return (
-                    <div key={emp.id} onClick={() => {
-                        if (selecionada) setEmpresasSelecionadas(empresasSelecionadas.filter(id => id !== emp.id));
-                        else setEmpresasSelecionadas([...empresasSelecionadas, emp.id]);
-                      }}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 12,
-                        padding: '10px 14px', cursor: 'pointer',
-                        borderBottom: i < data.empresas.length - 1
-                          ? '1px solid var(--c-border)' : 'none',
-                        background: selecionada ? 'var(--c-primary-soft)' : 'transparent',
-                        transition: 'background 0.1s'
-                      }}>
-                      {/* Checkbox */}
-                      <div style={{
-                        width: 18, height: 18, borderRadius: 5, flexShrink: 0,
-                        border: `1.5px solid ${selecionada ? 'var(--c-primary)' : 'var(--c-border)'}`,
-                        background: selecionada ? 'var(--c-primary)' : 'transparent',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center'
-                      }}>
-                        {selecionada && <Icon name="check" size={11} color="#fff" />}
-                      </div>
-                      {/* Avatar */}
-                      <div style={{
-                        width: 30, height: 30, borderRadius: 7, flexShrink: 0,
-                        background: ic.bg, color: ic.fg,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontWeight: 700, fontSize: 13
-                      }}>
-                        {emp.nome.charAt(0)}
-                      </div>
-                      {/* Info */}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{
-                          fontSize: 13, fontWeight: 500, color: 'var(--c-text)',
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
-                        }}>
-                          {emp.nome}
-                        </div>
-                        <div style={{ fontSize: 11, color: 'var(--c-text-muted)' }}>
-                          {emp.segmento || emp.cnpj || '—'}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--c-text-muted)', marginTop: 6 }}>
-                Selecione quais empresas este usuário poderá acessar.
-              </div>
+              <div>Usuário</div>
+              <div>E-mail</div>
+              <div>Cargo</div>
+              <div>Status</div>
+              <div style={{ textAlign: 'right' }}>Ações</div>
             </div>
           )}
 
-          <Btn variant="primary" onClick={criarUsuario} disabled={loading} style={{ alignSelf:'flex-start' }}>
-            {loading ? 'Criando...' : 'Criar usuário'}
-          </Btn>
-        </div>
-      </SecaoConfig>
+          {/* Linhas */}
+          {usuariosFiltrados.map((u, idx) => {
+            const isSelected = selecionados.includes(u.id);
+            const cargoNorm = getCargoNormalizado(u.cargo);
+            const cor = corPapel[cargoNorm] || corPapel[u.cargo] || 'var(--c-primary)';
+            const nomesEmpresas = getNomeEmpresas(u);
+            const isInativo = u.ativo === false;
+            const isPendente = u.status === 'pendente';
 
-      <SecaoConfig titulo="Usuários com acesso" descricao={`${convites.length} usuário(s) criado(s)`}>
-        {convites.length === 0 ? (
-          <EmptyState icon="users" title="Nenhum usuário" hint="Você ainda não criou contas para outras pessoas." />
-        ) : (
-          <div style={{ display:'flex', flexDirection:'column', gap:8, maxWidth:600 }}>
-            {convites.map(c => {
-              const cor = corPapel[c.cargo] || 'var(--c-primary)';
-              const vinculadas = c.isConvite ? (c.empresas_ids || []) : (usuariosEmpresas[c.id] || []);
-              const nomesEmpresas = data.empresas.filter(e=>vinculadas.includes(e.id)).map(e=>e.nome).join(', ');
-              
+            if (isMobile) {
+              // --- Mobile card layout ---
               return (
-              <div key={c.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 14px', borderRadius:10, background:'var(--c-bg)', border:'1px solid var(--c-border)' }}>
-                <div style={{ width:36, height:36, borderRadius:99, background: cor + '20', color: cor, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:14, flexShrink:0 }}>
-                  {c.nome.charAt(0).toUpperCase()}
-                </div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:13, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    {c.nome}
-                    {c.status === 'pendente' && <Badge status="pendente" />}
+                <div key={u.id} style={{
+                  padding: '14px 16px',
+                  borderBottom: idx < usuariosFiltrados.length - 1 ? '1px solid var(--c-border)' : 'none',
+                  background: isSelected ? 'var(--c-primary-soft)' : 'transparent',
+                  transition: 'background 0.1s'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                    <div onClick={() => toggleSelect(u.id)} style={{ ...checkboxStyle(isSelected), marginTop: 2 }}>
+                      {isSelected && <Icon name="check" size={11} color="#fff" strokeWidth={3} />}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                        <div style={{
+                          width: 32, height: 32, borderRadius: 99, background: cor + '20', color: cor,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13, flexShrink: 0
+                        }}>
+                          {(u.nome || '?').charAt(0).toUpperCase()}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.nome}</div>
+                          <div style={{ fontSize: 11, color: 'var(--c-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email}</div>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginTop: 6, marginBottom: 8 }}>
+                        <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 99, background: cor + '18', color: cor }}>
+                          {PAPEL_LABELS[u.cargo] || u.cargo}
+                        </span>
+                        {isPendente && <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 99, background: '#f59e0b18', color: '#f59e0b' }}>Pendente</span>}
+                        {isInativo && <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 99, background: '#dc262618', color: '#dc2626' }}>Inativo</span>}
+                        {!isPendente && !isInativo && <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 99, background: '#16a34a18', color: '#16a34a' }}>Ativo</span>}
+                        <span style={{ fontSize: 10, color: 'var(--c-text-muted)' }}>{nomesEmpresas.length} empresa(s)</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button onClick={() => setViewUsuario(u)} style={{ background: 'none', border: '1px solid var(--c-border)', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 11, color: 'var(--c-text)', fontFamily: 'inherit' }}>
+                          <Icon name="eye" size={12} /> Visualizar
+                        </button>
+                        {!u.isConvite && (
+                          <button onClick={() => setEditUsuario({
+                            id: u.id, nome: u.nome, email: u.email, cargo: cargoNorm,
+                            empresasIds: u.isConvite ? (u.empresas_ids || []) : (usuariosEmpresas[u.id] || []),
+                            ativo: u.ativo !== false
+                          })} style={{ background: 'none', border: '1px solid var(--c-border)', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 11, color: 'var(--c-primary)', fontFamily: 'inherit' }}>
+                            <Icon name="edit" size={12} /> Editar
+                          </button>
+                        )}
+                        <button onClick={() => setConfirmRevogar({ id: u.id, isConvite: u.isConvite })} style={{ background: 'none', border: '1px solid var(--c-border)', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 11, color: '#dc2626', fontFamily: 'inherit' }}>
+                          <Icon name="trash" size={12} /> Excluir
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <div style={{ fontSize:12, color:'var(--c-text-muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.email}</div>
-                  <div style={{ display:'flex', gap:8, alignItems:'center', marginTop:4 }}>
-                    <span style={{ fontSize:11, fontWeight:600, color: cor }}>{PAPEL_LABELS[c.cargo] || c.cargo}</span>
-                    <span style={{ fontSize:11, color:'var(--c-text-muted)' }}>·</span>
-                    <span style={{ fontSize:11, color:'var(--c-text-muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={nomesEmpresas}>
-                      {vinculadas.length} empresa(s)
-                    </span>
-                    {c.ativo === false && (
-                      <>
-                        <span style={{ fontSize:11, color:'var(--c-text-muted)' }}>·</span>
-                        <span style={{ fontSize:11, fontWeight:600, color: '#dc2626' }}>Inativo</span>
-                      </>
-                    )}
+                </div>
+              );
+            }
+
+            // --- Desktop row ---
+            return (
+              <div key={u.id} style={{
+                display: 'grid', gridTemplateColumns: '40px 1.5fr 1.8fr 1fr 0.8fr 140px',
+                padding: '12px 16px', alignItems: 'center',
+                borderBottom: idx < usuariosFiltrados.length - 1 ? '1px solid var(--c-border)' : 'none',
+                background: isSelected ? 'var(--c-primary-soft)' : 'transparent',
+                transition: 'background 0.15s'
+              }}>
+                {/* Checkbox */}
+                <div>
+                  <div onClick={() => toggleSelect(u.id)} style={checkboxStyle(isSelected)}>
+                    {isSelected && <Icon name="check" size={11} color="#fff" strokeWidth={3} />}
                   </div>
                 </div>
-                <div style={{ display:'flex', gap:6 }}>
-                  {!c.isConvite && (
+
+                {/* Nome + Avatar */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                  <div style={{
+                    width: 34, height: 34, borderRadius: 99, background: cor + '20', color: cor,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14, flexShrink: 0
+                  }}>
+                    {(u.nome || '?').charAt(0).toUpperCase()}
+                  </div>
+                  <div style={{ minWidth: 0, overflow: 'hidden' }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.nome}</div>
+                    <div style={{ fontSize: 10, color: 'var(--c-text-muted)' }}>{nomesEmpresas.length} empresa(s)</div>
+                  </div>
+                </div>
+
+                {/* Email */}
+                <div style={{ fontSize: 13, color: 'var(--c-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {u.email}
+                </div>
+
+                {/* Cargo badge */}
+                <div>
+                  <span style={{
+                    fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 99,
+                    background: cor + '18', color: cor, whiteSpace: 'nowrap'
+                  }}>
+                    {PAPEL_LABELS[u.cargo] || u.cargo}
+                  </span>
+                </div>
+
+                {/* Status */}
+                <div>
+                  {isPendente && <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 99, background: '#f59e0b18', color: '#f59e0b' }}>Pendente</span>}
+                  {isInativo && !isPendente && <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 99, background: '#dc262618', color: '#dc2626' }}>Inativo</span>}
+                  {!isPendente && !isInativo && <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 99, background: '#16a34a18', color: '#16a34a' }}>Ativo</span>}
+                </div>
+
+                {/* Ações */}
+                <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                  <button onClick={() => setViewUsuario(u)} title="Visualizar" style={{
+                    background: 'none', border: '1px solid var(--c-border)', borderRadius: 6,
+                    width: 32, height: 32, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                  }}>
+                    <Icon name="eye" size={14} color="var(--c-text-muted)" />
+                  </button>
+                  {!u.isConvite && (
                     <button onClick={() => setEditUsuario({
-                      id: c.id,
-                      nome: c.nome,
-                      email: c.email,
-                      cargo: c.cargo,
-                      empresasIds: vinculadas,
-                      ativo: c.ativo !== false
-                    })} style={{ background:'none', border:'1px solid var(--c-border)', borderRadius:6, padding:'4px 10px', cursor:'pointer', fontSize:12, color:'var(--c-text)', fontFamily:'inherit' }}>
-                      Editar
+                      id: u.id, nome: u.nome, email: u.email, cargo: cargoNorm,
+                      empresasIds: u.isConvite ? (u.empresas_ids || []) : (usuariosEmpresas[u.id] || []),
+                      ativo: u.ativo !== false
+                    })} title="Editar" style={{
+                      background: 'none', border: '1px solid var(--c-border)', borderRadius: 6,
+                      width: 32, height: 32, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                    }}>
+                      <Icon name="edit" size={14} color="var(--c-primary)" />
                     </button>
                   )}
-                  <button onClick={() => revogarAcesso(c.id, c.isConvite)} style={{ background:'none', border:'1px solid var(--c-border)', borderRadius:6, padding:'4px 10px', cursor:'pointer', fontSize:12, color:'#dc2626', fontFamily:'inherit' }}>
-                    Remover
+                  <button onClick={() => setConfirmRevogar({ id: u.id, isConvite: u.isConvite })} title="Excluir" style={{
+                    background: 'none', border: '1px solid var(--c-border)', borderRadius: 6,
+                    width: 32, height: 32, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                  }}>
+                    <Icon name="trash" size={14} color="#dc2626" />
                   </button>
                 </div>
               </div>
-            )})}
+            );
+          })}
+
+          {/* Rodapé da tabela */}
+          <div style={{
+            padding: '10px 16px', borderTop: '1px solid var(--c-border)', background: 'var(--c-bg)',
+            fontSize: 12, color: 'var(--c-text-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+          }}>
+            <span>
+              {selecionados.length > 0
+                ? `${selecionados.length} de ${usuariosFiltrados.length} selecionado(s)`
+                : `${usuariosFiltrados.length} usuário(s) encontrado(s)`}
+            </span>
+            {selecionados.length > 0 && (
+              <button onClick={() => setSelecionados([])} style={{
+                background: 'none', border: 'none', cursor: 'pointer', fontSize: 12,
+                color: 'var(--c-primary)', fontFamily: 'inherit', textDecoration: 'underline'
+              }}>
+                Limpar seleção
+              </button>
+            )}
           </div>
-        )}
-      </SecaoConfig>
-      
-      {confirmRevogar && (
-        <ModalConfirmacao
-          open={true}
-          titulo="Remover Usuário"
-          mensagem="Tem certeza que deseja remover este usuário e revogar todos os seus acessos? Esta ação excluirá a conta dele permanentemente."
-          labelConfirmar="Sim, Remover"
-          corConfirmar="#dc2626"
-          onConfirmar={executarExclusao}
-          onCancelar={() => setConfirmRevogar(null)}
-        />
+        </div>
       )}
 
+      {/* ====== MODAIS ====== */}
+
+      {/* Modal: Visualizar Usuário */}
+      {viewUsuario && (() => {
+        const u = viewUsuario;
+        const cargoNorm = getCargoNormalizado(u.cargo);
+        const cor = corPapel[cargoNorm] || corPapel[u.cargo] || 'var(--c-primary)';
+        const nomesEmpresas = getNomeEmpresas(u);
+        const isInativo = u.ativo === false;
+        const isPendente = u.status === 'pendente';
+        return (
+          <Modal open onClose={() => setViewUsuario(null)} title="Detalhes do Usuário" width={520}
+            footer={<>
+              {!u.isConvite && (
+                <Btn variant="secondary" onClick={() => {
+                  setViewUsuario(null);
+                  setEditUsuario({
+                    id: u.id, nome: u.nome, email: u.email, cargo: cargoNorm,
+                    empresasIds: u.isConvite ? (u.empresas_ids || []) : (usuariosEmpresas[u.id] || []),
+                    ativo: u.ativo !== false
+                  });
+                }}>
+                  <Icon name="edit" size={14} /> Editar
+                </Btn>
+              )}
+              <Btn variant="primary" onClick={() => setViewUsuario(null)}>Fechar</Btn>
+            </>}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              {/* Avatar + nome */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <div style={{
+                  width: 56, height: 56, borderRadius: 99, background: cor + '20', color: cor,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 22, flexShrink: 0
+                }}>
+                  {(u.nome || '?').charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 700 }}>{u.nome}</div>
+                  <div style={{ fontSize: 13, color: 'var(--c-text-muted)' }}>{u.email}</div>
+                </div>
+              </div>
+
+              {/* Info rows */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 0, borderRadius: 10, border: '1px solid var(--c-border)', overflow: 'hidden' }}>
+                {[
+                  { label: 'Cargo', value: <span style={{ fontSize: 12, fontWeight: 600, padding: '2px 10px', borderRadius: 99, background: cor + '18', color: cor }}>{PAPEL_LABELS[u.cargo] || u.cargo}</span> },
+                  { label: 'Status', value: isPendente
+                    ? <span style={{ fontSize: 12, fontWeight: 600, padding: '2px 10px', borderRadius: 99, background: '#f59e0b18', color: '#f59e0b' }}>Pendente</span>
+                    : isInativo
+                    ? <span style={{ fontSize: 12, fontWeight: 600, padding: '2px 10px', borderRadius: 99, background: '#dc262618', color: '#dc2626' }}>Inativo</span>
+                    : <span style={{ fontSize: 12, fontWeight: 600, padding: '2px 10px', borderRadius: 99, background: '#16a34a18', color: '#16a34a' }}>Ativo</span>
+                  },
+                  { label: 'Empresas vinculadas', value: nomesEmpresas.length === 0
+                    ? <span style={{ color: 'var(--c-text-muted)', fontSize: 13 }}>Nenhuma</span>
+                    : <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                        {nomesEmpresas.map((n, i) => (
+                          <span key={i} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, background: 'var(--c-bg)', border: '1px solid var(--c-border)' }}>{n}</span>
+                        ))}
+                      </div>
+                  },
+                  { label: 'Criado em', value: <span style={{ fontSize: 13 }}>{u.created_at ? new Date(u.created_at).toLocaleDateString('pt-BR') : '—'}</span> }
+                ].map((row, i, arr) => (
+                  <div key={i} style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '12px 16px', borderBottom: i < arr.length - 1 ? '1px solid var(--c-border)' : 'none',
+                    background: i % 2 === 0 ? 'var(--c-surface)' : 'var(--c-bg)'
+                  }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{row.label}</span>
+                    <div style={{ textAlign: 'right' }}>{row.value}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Modal>
+        );
+      })()}
+
+      {/* Modal: Criar Usuário */}
+      {showCriar && (
+        <Modal open onClose={() => { setShowCriar(false); setErros({}); }} title="Criar Novo Usuário" width={560}
+          footer={<>
+            <Btn variant="secondary" onClick={() => { setShowCriar(false); setErros({}); }} disabled={actionLoading}>Cancelar</Btn>
+            <Btn variant="primary" onClick={criarUsuario} disabled={actionLoading}>
+              {actionLoading ? 'Criando...' : 'Criar Usuário'}
+            </Btn>
+          </>}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+              <Field label="Nome Completo" style={{ flex:1, minWidth:200 }} erro={erros.nome}>
+                <Input value={nomeNovo} onChange={e => setNomeNovo(e.target.value)} placeholder="João Silva" style={{ borderColor: erros.nome ? '#dc2626' : undefined }} />
+                {erros.nome && <span style={{ fontSize:11, color:'#dc2626', marginTop:2 }}>{erros.nome}</span>}
+              </Field>
+              <Field label="E-mail" style={{ flex:1, minWidth:200 }} erro={erros.email}>
+                <Input type="email" value={emailNovo} onChange={e => setEmailNovo(e.target.value)} placeholder="joao@empresa.com" style={{ borderColor: erros.email ? '#dc2626' : undefined }} />
+                {erros.email && <span style={{ fontSize:11, color:'#dc2626', marginTop:2 }}>{erros.email}</span>}
+              </Field>
+            </div>
+            <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+              <Field label="Senha Temporária" style={{ flex:1, minWidth:200 }} erro={erros.senha}>
+                <Input type="text" value={senhaNova} onChange={e => setSenhaNova(e.target.value)} placeholder="Defina uma senha" style={{ borderColor: erros.senha ? '#dc2626' : undefined }} />
+                {erros.senha && <span style={{ fontSize:11, color:'#dc2626', marginTop:2 }}>{erros.senha}</span>}
+              </Field>
+              <Field label="Cargo / Papel" style={{ flex:1, minWidth:200 }}>
+                <CustomSelect value={papelNovo} onChange={e => {
+                  setPapelNovo(e.target.value);
+                  if(e.target.value==='admin') setEmpresasSelecionadas(data.empresas.map(em=>em.id));
+                }} options={PAPEIS.map(p=>({value:p.value, label:p.label}))} />
+              </Field>
+            </div>
+
+            {papelNovo !== 'admin' && (
+              <div style={{ marginTop: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>
+                  Empresas com acesso
+                </div>
+                <div style={{ border: '1.5px solid var(--c-border)', borderRadius: 10, overflow: 'hidden', background: 'var(--c-surface)', maxHeight: 200, overflowY: 'auto' }}>
+                  {data.empresas?.length === 0 ? (
+                    <div style={{ padding: '14px 16px', fontSize: 13, color: 'var(--c-text-muted)', textAlign: 'center' }}>
+                      Nenhuma empresa cadastrada
+                    </div>
+                  ) : (data.empresas || []).map((emp, i) => {
+                    const selecionada = empresasSelecionadas.includes(emp.id);
+                    return (
+                      <div key={emp.id} onClick={() => {
+                          if (selecionada) setEmpresasSelecionadas(empresasSelecionadas.filter(id => id !== emp.id));
+                          else setEmpresasSelecionadas([...empresasSelecionadas, emp.id]);
+                        }}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', cursor: 'pointer',
+                          borderBottom: i < data.empresas.length - 1 ? '1px solid var(--c-border)' : 'none',
+                          background: selecionada ? 'var(--c-primary-soft)' : 'transparent',
+                          transition: 'background 0.1s'
+                        }}>
+                        <div style={checkboxStyle(selecionada)}>
+                          {selecionada && <Icon name="check" size={11} color="#fff" strokeWidth={3} />}
+                        </div>
+                        <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--c-text)' }}>{emp.nome}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--c-text-muted)', marginTop: 6 }}>
+                  Selecione quais empresas este usuário poderá acessar.
+                </div>
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
+
+      {/* Modal: Editar Usuário */}
       {editUsuario && (
         <ModalEditarUsuario
           usuario={editUsuario}
           todasEmpresas={data.empresas}
           onClose={() => setEditUsuario(null)}
-          loading={loading}
-          onSave={async (payload) => {
-            setLoading(true);
-            try {
-              const { data: { session: currentSession } } = await window.supabaseClient.auth.getSession();
-              const token = currentSession?.access_token;
-              const response = await fetch('https://svgvtmkqjvxsoduohfuy.supabase.co/functions/v1/admin-criar-usuario', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                  action: 'update',
-                  ...payload
-                })
-              });
-              
-              if (!response.ok) {
-                const errJson = await response.json().catch(() => ({}));
-                throw new Error(errJson.error || 'Erro ao atualizar usuário');
-              }
+          loading={actionLoading}
+          onSave={salvarEdicao}
+        />
+      )}
 
-              toast.push('Usuário atualizado com sucesso!', 'success');
-              setEditUsuario(null);
-              carregarConvites();
-            } catch (err) {
-              toast.push(err.message, 'error');
-            }
-            setLoading(false);
+      {/* Modal: Confirmar exclusão individual */}
+      {confirmRevogar && (
+        <ModalConfirmacao
+          open={true}
+          titulo="Excluir Usuário"
+          mensagem="Tem certeza que deseja excluir este usuário e revogar todos os seus acessos? Esta ação é permanente e não pode ser desfeita."
+          labelConfirmar={actionLoading ? 'Excluindo...' : 'Sim, Excluir'}
+          corConfirmar="#dc2626"
+          onConfirmar={async () => {
+            await executarExclusao(confirmRevogar.id, confirmRevogar.isConvite);
+            setConfirmRevogar(null);
           }}
+          onCancelar={() => setConfirmRevogar(null)}
+        />
+      )}
+
+      {/* Modal: Confirmar exclusão em lote */}
+      {confirmLote && (
+        <ModalConfirmacao
+          open={true}
+          titulo="Excluir Usuários em Lote"
+          mensagem={`Tem certeza que deseja excluir ${selecionados.length} usuário(s) selecionado(s)? Esta ação é permanente, todos os acessos serão revogados e as contas apagadas.`}
+          labelConfirmar={actionLoading ? 'Excluindo...' : `Excluir ${selecionados.length} usuário(s)`}
+          corConfirmar="#dc2626"
+          onConfirmar={executarExclusaoLote}
+          onCancelar={() => setConfirmLote(false)}
         />
       )}
     </div>
@@ -1135,6 +1515,14 @@ function ModalEditarUsuario({ usuario, todasEmpresas, onClose, onSave, loading }
       empresasIds: cargo === 'admin' ? todasEmpresas.map(e => e.id) : empresasSelecionadas
     });
   }
+
+  const checkboxStyle = (checked) => ({
+    width: 18, height: 18, borderRadius: 4, flexShrink: 0, cursor: 'pointer',
+    border: `1.5px solid ${checked ? 'var(--c-primary)' : 'var(--c-border)'}`,
+    background: checked ? 'var(--c-primary)' : 'transparent',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    transition: 'all 0.15s ease'
+  });
 
   return (
     <Modal open onClose={onClose} title="Editar Usuário" width={560}
@@ -1192,7 +1580,7 @@ function ModalEditarUsuario({ usuario, todasEmpresas, onClose, onSave, loading }
                       transition: 'background 0.1s'
                     }}
                   >
-                    <div style={{ width: 18, height: 18, borderRadius: 4, border: '1.5px solid var(--c-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: selecionada ? 'var(--c-primary)' : 'transparent', borderColor: selecionada ? 'var(--c-primary)' : 'var(--c-border)' }}>
+                    <div style={checkboxStyle(selecionada)}>
                       {selecionada && <Icon name="check" size={12} color="#fff" strokeWidth={3} />}
                     </div>
                     <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--c-text)' }}>{emp.nome}</span>
@@ -1206,6 +1594,8 @@ function ModalEditarUsuario({ usuario, todasEmpresas, onClose, onSave, loading }
     </Modal>
   );
 }
+
+
 
 
 // =========================================================================

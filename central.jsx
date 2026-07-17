@@ -281,7 +281,13 @@ function CentralGestao({ data, onOpenEmpresa, onCreateEmpresa, onDeleteEmpresa, 
       <ModalConfirmacao
         open={!!empresaExcluir}
         titulo="Confirmar Exclusão"
-        mensagem={`Deseja realmente excluir a empresa "${empresaExcluir?.nome || ''}"? Esta ação removerá permanentemente todos os lançamentos vinculados a ela.`}
+        mensagem={
+          empresaExcluir 
+            ? (data.lancamentos[empresaExcluir.id] || []).length > 0 
+              ? `Esta empresa possui ${(data.lancamentos[empresaExcluir.id] || []).length} lançamento(s) que serão excluídos permanentemente. Deseja continuar com a exclusão de "${empresaExcluir.nome}"?`
+              : `Deseja realmente excluir a empresa "${empresaExcluir.nome}"? Esta ação não poderá ser desfeita.`
+            : ''
+        }
         onConfirmar={async () => {
           if (empresaExcluir) {
             await onDeleteEmpresa(empresaExcluir.id);
